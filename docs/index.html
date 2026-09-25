@@ -114,6 +114,25 @@ details.toks{position:relative;margin:8px 0 0 62px;padding:8px 12px}
 .more{margin-top:10px;background:none;border:1px solid var(--rule);color:var(--ink);font:inherit;font-size:14px;
   padding:6px 14px;border-radius:6px;cursor:pointer}
 
+.ranges{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+.ranges button{background:none;border:1px solid var(--rule);color:var(--ink);font:inherit;font-size:13px;
+  padding:4px 12px;border-radius:999px;cursor:pointer}
+.ranges button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.ranges .sep{flex:1}
+.lc{position:relative;touch-action:pan-y;user-select:none}
+.lc-c{margin-bottom:10px}
+.lc-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:14px}
+.lc-h b{font-weight:700}
+.lc-h .num{font-size:18px;font-weight:600}
+.lc-h small{color:var(--muted);font-size:12px}
+.lc svg{display:block;width:100%;overflow:visible}
+.lc svg text{font-family:var(--num);font-size:12px;fill:var(--muted)}
+.lc .note{font-size:12px;color:var(--muted);margin:2px 0 0}
+.lc-tip{position:absolute;top:0;pointer-events:none;background:var(--surface);border:1px solid var(--rule);
+  border-radius:6px;padding:6px 10px;font-size:12px;line-height:1.5;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;z-index:2}
+.lc-tip b{font-family:var(--num);font-size:14px;font-weight:600;margin-left:6px}
+.lc-tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:1px}
+.go-long{font-size:13px;color:var(--muted);margin-left:8px}
 .warn{background:var(--surface);border-left:3px solid var(--warm);padding:10px 14px;margin-top:18px;font-size:14px}
 details{margin-top:40px;background:var(--surface);padding:14px 16px;border-radius:8px;font-size:14px}
 summary{cursor:pointer;font-weight:700}
@@ -186,7 +205,7 @@ function render(d){
     <div><div class="cap">BTCドミナンス</div>
       <div class="big num">${b.dom.toFixed(1)}<small>%</small></div></div>
     <div>${spark(d.dom_series.map(p=>p[1]), 'var(--ink)')}
-      <div class="cap">過去7日 ${dd==null?'':`<span class="delta num ${dd<0?'down':'up'}">24h ${dd>0?'+':''}${dd.toFixed(2)}pt</span>`}</div></div>
+      <div class="cap">過去7日 ${dd==null?'':`<span class="delta num ${dd<0?'down':'up'}">24h ${dd>0?'+':''}${dd.toFixed(2)}pt</span>`}<a class="go-long" href="#long">長期チャート ↓</a></div></div>
     <p>${esc(b.phase)}</p></div>`;
 
   const f = d.fng;
@@ -242,14 +261,154 @@ function render(d){
   });
   h += `</div>${secs.length>15?`<button class="more" id="more">残り${secs.length-15}件を表示</button>`:''}</section>`;
 
+  h += `<section id="long"><h2>長期チャート</h2><p class="sub">BTC・ETHの価格、BTCドミナンス、恐怖・強欲指数を同じ時間軸で並べています。グラフをなぞると、その日の値が全部出ます。</p>
+    <div class="ranges" role="group" aria-label="期間">${RANGES.map(([n,l])=>`<button data-r="${n}" aria-pressed="${n===RANGE}">${l}</button>`).join('')}
+      <span class="sep"></span><button data-log aria-pressed="${LOG}">価格を対数目盛</button></div>
+    <div class="lc" id="lc"></div></section>`;
   $('#app').innerHTML = h;
+  LAST = d;
+  document.querySelectorAll('.ranges button').forEach(b => b.onclick = () => {
+    if(b.hasAttribute('data-log')) LOG = !LOG; else RANGE = +b.dataset.r;
+    document.querySelectorAll('.ranges button[data-r]').forEach(x => x.setAttribute('aria-pressed', +x.dataset.r===RANGE));
+    $('.ranges button[data-log]').setAttribute('aria-pressed', LOG);
+    drawLong();
+  });
+  drawLong();
   const m = $('#more');
   if(m) m.onclick = () => { document.querySelectorAll('.sec[hidden]').forEach(e=>e.hidden=false); m.remove(); };
+}
+
+// ---------- 長期チャート ----------
+const RANGES = [[90,'3ヶ月'],[182,'半年'],[365,'1年'],[1825,'5年'],[0,'全期間']];
+let RANGE = 365, LOG = true, LT = null, LAST = null;
+const DAY = 864e5;
+const usd = v => v==null ? '—' : '$' + (v>=100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2));
+const usdK = v => v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(v>=1e4?0:1)+'k' : '$'+(v>=10?Math.round(v):v.toFixed(1));
+const ymd = t => { const d = new Date(t); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
+
+function longSeries(d){
+  const day = Math.floor(Date.parse(d.updated)/DAY)*DAY;
+  const pts = (k, live) => {  // 保存済みの日足 + 今の値を今日の点として足す
+    const a = (LT?.[k]||[]).map(([t,v]) => [t*1000, v]);
+    if(live!=null){ if(a.length && a[a.length-1][0]>=day) a[a.length-1] = [day, live]; else a.push([day, live]); }
+    return a;
+  };
+  return [
+    {name:'BTC価格', color:'var(--warm)', price:true, fmt:usd, axis:usdK, pts:pts('btc', d.btc.price)},
+    {name:'ETH価格', color:'var(--cold)', price:true, fmt:usd, axis:usdK, pts:pts('eth', d.btc.eth_price)},
+    {name:'BTCドミナンス', color:'var(--ink)', fmt:v=>v.toFixed(1)+'%', axis:v=>v.toFixed(1)+'%', pts:pts('dom', d.btc.dom), dom:true},
+    {name:'恐怖・強欲指数', color:'var(--mild)', fmt:v=>String(Math.round(v)), axis:v=>String(v), pts:pts('fng', d.fng?.value), fixed:[0,100]},
+  ];
+}
+
+function niceTicks(lo, hi, n){
+  const step0 = (hi-lo)/n, mag = Math.pow(10, Math.floor(Math.log10(step0||1))), r = step0/mag;
+  const step = (r>5?10:r>2?5:r>1?2:1)*mag, out = [];
+  for(let v = Math.ceil(lo/step)*step; v <= hi+1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function logTicks(lo, hi){
+  const out = [];
+  for(let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++)
+    for(const m of [1,2,5]){ const v = m*Math.pow(10,e); if(v>=lo && v<=hi) out.push(v); }
+  return out.length>=2 ? (out.length>5 ? out.filter((_,i)=>i%2===0) : out) : niceTicks(lo, hi, 3);
+}
+function timeTicks(t0, t1){
+  const span = (t1-t0)/DAY, out = [], d = new Date(t0);
+  const stepM = span>1500 ? 12 : span>700 ? 6 : span>300 ? 3 : 1;
+  let y = d.getFullYear(), m = d.getMonth()+1;
+  if(stepM===12){ m = 0; y++; } else m = Math.ceil(m/stepM)*stepM;
+  for(;;){ if(m>=12){ y += Math.floor(m/12); m %= 12; } const t = new Date(y, m, 1).getTime(); if(t>t1) break;
+    if(t>=t0) out.push([t, stepM===12||m===0 ? String(y) : `${String(y).slice(2)}/${m+1}`]); m += stepM; }
+  return out;
+}
+
+function drawLong(){
+  const box = $('#lc'); if(!box || !LAST) return;
+  if(!LT){ box.innerHTML = '<div class="empty">長期データを読み込み中…（まだ無い場合は次の更新で作られます）</div>'; return; }
+  const W = Math.max(280, box.clientWidth), PR = 50, PW = W - PR, H = 118;
+  const series = longSeries(LAST);
+  const t1 = Math.floor(Date.parse(LAST.updated)/DAY)*DAY;
+  const first = Math.min(...series.map(s => s.pts.length ? s.pts[0][0] : t1));
+  const t0 = RANGE ? t1 - RANGE*DAY : first;
+  const X = t => (t-t0)/(t1-t0||1)*PW;
+  const ticks = timeTicks(t0, t1);
+  let html = '';
+  series.forEach((s, si) => {
+    s.view = s.pts.filter(p => p[0]>=t0 && p[0]<=t1);
+    const last = si===series.length-1, h = H + (last?20:0);
+    const vs = s.view.map(p=>p[1]);
+    const log = s.price && LOG && vs.length && Math.min(...vs)>0;
+    let lo = s.fixed ? s.fixed[0] : Math.min(...vs), hi = s.fixed ? s.fixed[1] : Math.max(...vs);
+    if(!s.fixed){ const pad = log ? 0 : (hi-lo)*.08 || Math.abs(hi)*.01 || 1; lo -= pad; hi += pad; }
+    const f = log ? Math.log10 : v => v, flo = f(lo), fhi = f(hi);
+    s.Y = v => 6 + (1-(f(v)-flo)/((fhi-flo)||1))*(H-12);
+    const chg = vs.length>1 && !s.fixed && !s.dom ? (vs[vs.length-1]/vs[0]-1)*100 : null;
+    const cur = vs.length ? vs[vs.length-1] : null;
+    html += `<div class="lc-c"><div class="lc-h"><b>${s.name}</b><span class="num">${cur==null?'—':s.fmt(cur)}</span>
+      ${chg!=null?`<small>この期間 ${sp(chg)}</small>`:''}${s.dom&&s.pts.length?`<small>${ymd(s.pts[0][0])} から記録中</small>`:''}</div>
+      <svg width="${W}" height="${h}" viewBox="0 0 ${W} ${h}" data-i="${si}">`;
+    if(s.fixed){  // 恐怖(0-25)と強欲(75-100)の帯
+      html += `<rect x="0" y="${s.Y(100)}" width="${PW}" height="${s.Y(75)-s.Y(100)}" fill="var(--hot)" opacity=".09"/>
+        <rect x="0" y="${s.Y(25)}" width="${PW}" height="${s.Y(0)-s.Y(25)}" fill="var(--cold)" opacity=".09"/>
+        <text x="4" y="${s.Y(100)+13}">強欲</text><text x="4" y="${s.Y(0)-4}">恐怖</text>`;
+    }
+    const yt = s.fixed ? [0,25,50,75,100] : vs.length ? (log ? logTicks(lo,hi) : niceTicks(lo,hi,3)) : [];
+    for(const v of yt) html += `<line x1="0" x2="${PW}" y1="${s.Y(v)}" y2="${s.Y(v)}" stroke="var(--rule)" stroke-width="1"/>
+      <text x="${PW+6}" y="${s.Y(v)+4}">${s.axis(v)}</text>`;
+    for(const [t] of ticks) html += `<line x1="${X(t)}" x2="${X(t)}" y1="6" y2="${H-6}" stroke="var(--rule)" stroke-width="1" opacity=".5"/>`;
+    if(last) for(const [t,l] of ticks) html += `<text x="${X(t)}" y="${H+14}" text-anchor="middle">${l}</text>`;
+    if(s.view.length>1){
+      const d = s.view.map((p,k)=>`${k?'L':'M'}${X(p[0]).toFixed(1)},${s.Y(p[1]).toFixed(1)}`).join('');
+      html += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
+    }
+    html += `<line class="xh" y1="6" y2="${H-6}" stroke="var(--muted)" stroke-width="1" style="display:none"/>
+      <circle class="dot" r="4" fill="${s.color}" stroke="var(--bg)" stroke-width="2" style="display:none"/></svg>`;
+    if(s.dom && s.view.length<30) html += `<p class="note">BTCドミナンスの過去データは無料のAPIでは取れないため、このツールが1日1点ずつ記録しています。使うほど長く見られるようになります。</p>`;
+    html += `</div>`;
+  });
+  if(!(LT.btc||[]).length) html = `<div class="warn" style="margin:0 0 12px">過去の価格データはまだありません。次のデータ更新（毎時13分）で5年分以上が自動で入ります。</div>` + html;
+  box.innerHTML = html + '<div class="lc-tip" id="lctip"></div>';
+  const tip = $('#lctip');
+  const near = (a, t) => { let lo = 0, hi = a.length-1; if(hi<0) return null;
+    while(lo<hi){ const m = (lo+hi)>>1; if(a[m][0]<t) lo = m+1; else hi = m; }
+    const p = lo>0 && Math.abs(a[lo-1][0]-t) < Math.abs(a[lo][0]-t) ? a[lo-1] : a[lo];
+    return Math.abs(p[0]-t) <= 2*DAY ? p : null; };
+  const hide = () => { tip.style.display='none'; box.querySelectorAll('.xh,.dot').forEach(e=>e.style.display='none'); };
+  box.onpointerleave = hide;
+  box.onpointermove = e => {
+    const r = box.querySelector('svg').getBoundingClientRect(), x = e.clientX - r.left;
+    if(x<0 || x>PW) return hide();
+    const t = t0 + x/PW*(t1-t0);
+    let rows = '';
+    series.forEach((s, si) => {
+      const svg = box.querySelector(`svg[data-i="${si}"]`), xh = svg.querySelector('.xh'), dot = svg.querySelector('.dot');
+      const p = near(s.view, t);
+      xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.style.display = '';
+      if(p){ dot.setAttribute('cx', X(p[0])); dot.setAttribute('cy', s.Y(p[1])); dot.style.display = ''; }
+      else dot.style.display = 'none';
+      rows += `<div><i style="background:${s.color}"></i>${s.name}<b>${p ? s.fmt(p[1]) : '—'}</b></div>`;
+    });
+    tip.innerHTML = `<div style="font-weight:700">${ymd(t)}</div>${rows}`;
+    tip.style.display = 'block';
+    const tw = tip.offsetWidth, br = box.getBoundingClientRect();
+    tip.style.left = Math.min(Math.max(0, x + 14 > PW - tw ? x - tw - 14 : x + 14), br.width - tw) + 'px';
+    tip.style.top = Math.max(0, e.clientY - br.top - 40) + 'px';
+  };
+}
+addEventListener('resize', () => { clearTimeout(drawLong.t); drawLong.t = setTimeout(drawLong, 150); });
+
+async function loadLong(mock){
+  for(const f of [mock ? 'longterm.mock.json' : 'longterm.json']){
+    try{ const r = await fetch(`${f}?t=${Math.floor(Date.now()/36e5)}`); if(r.ok){ LT = await r.json(); return drawLong(); } }catch(e){}
+  }
+  LT = {}; drawLong();
 }
 
 async function load(){
   if(window.__DATA__) return render(window.__DATA__);
   const q = new URLSearchParams(location.search).has('mock');
+  if(!LT) loadLong(q);
   for(const f of q ? ['data.mock.json'] : ['data.json','data.mock.json']){
     try{ const r = await fetch(`${f}?t=${Date.now()}`); if(r.ok) return render(await r.json()); }catch(e){}
   }
