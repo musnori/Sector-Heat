@@ -23,6 +23,9 @@ MOCK = "--mock" in sys.argv
 DATA_PATH = DOCS / ("data.mock.json" if MOCK else "data.json")
 HIST_PATH = DOCS / "history.json"
 HIST_MAX = 24 * 30  # 30日分（1時間ごと）
+LONG_PATH = DOCS / ("longterm.mock.json" if MOCK else "longterm.json")
+LONG_START = 1483228800  # 2017-01-01。長期チャートの価格はここから
+LONG_REFRESH = 20 * 3600  # 価格と恐怖・強欲指数の全期間は1日1回だけ取り直す
 
 CG_KEY = os.environ.get("COINGECKO_API_KEY", "")
 CG_BASE = "https://api.coingecko.com/api/v3"
@@ -128,11 +131,13 @@ def cg(path, params=None):
 
 def fetch_market():
     g = cg("/global")["data"]
-    btc = cg("/simple/price", {"ids": "bitcoin", "vs_currencies": "usd",
-                               "include_24hr_change": "true"})["bitcoin"]
+    px = cg("/simple/price", {"ids": "bitcoin,ethereum", "vs_currencies": "usd",
+                              "include_24hr_change": "true"})
+    btc, eth = px["bitcoin"], px.get("ethereum") or {}
     cats = cg("/coins/categories")
     return {"btc_dom": g["market_cap_percentage"]["btc"], "btc_price": btc["usd"],
-            "btc_24h": btc.get("usd_24h_change") or 0.0, "cats": cats}
+            "btc_24h": btc.get("usd_24h_change") or 0.0, "eth_price": eth.get("usd"),
+            "eth_24h": eth.get("usd_24h_change"), "cats": cats}
 
 
 # ---------- DefiLlama ----------
@@ -268,6 +273,100 @@ def fetch_prices(symbols):
             src[2] += 1
         time.sleep(0.2)
     return out
+
+
+# ---------- 長期チャート（日足） ----------
+def day_of(ts):
+    return int(ts) // 86400 * 86400
+
+
+def daily_binance(sym):
+    out, start = {}, LONG_START * 1000
+    for _ in range(10):
+        k = get("https://data-api.binance.vision/api/v3/klines",
+                params={"symbol": f"{sym}USDT", "interval": "1d", "startTime": start, "limit": 1000})
+        if not k:
+            break
+        out.update({day_of(x[0] / 1000): float(x[4]) for x in k})
+        if len(k) < 1000:
+            break
+        start = k[-1][0] + 86400000
+        time.sleep(0.3)
+    return sorted(out.items())
+
+
+def daily_okx(sym):
+    out, after = {}, None
+    for _ in range(40):  # 100日ずつ過去へ
+        params = {"instId": f"{sym}-USDT", "bar": "1Dutc", "limit": 100}
+        if after:
+            params["after"] = after
+        d = get("https://www.okx.com/api/v5/market/history-candles", params=params)["data"]
+        if not d:
+            break
+        out.update({day_of(int(x[0]) / 1000): float(x[4]) for x in d})
+        after = d[-1][0]
+        if int(after) / 1000 < LONG_START:
+            break
+        time.sleep(0.25)
+    return sorted(out.items())
+
+
+def daily_prices(sym):
+    for name, fn in (("Binance", daily_binance), ("OKX", daily_okx)):
+        pts = safe(lambda: fn(sym))
+        if pts and len(pts) > 30:
+            print(f"  {sym}: {name} {len(pts)}日分")
+            return [[t, round(v, 2)] for t, v in pts]
+    return None
+
+
+def fng_history():
+    d = get("https://api.alternative.me/fng/", params={"limit": 0})["data"]
+    return sorted([[day_of(x["timestamp"]), int(x["value"])] for x in d])
+
+
+def update_longterm(lt, now_ts, dom, hist):
+    """価格・恐怖強欲は1日1回全期間を取り直し、BTCドミナンスは自前で1日1点ずつ貯める"""
+    if now_ts - lt.get("refreshed", 0) > LONG_REFRESH:
+        print("長期チャート...")
+        for key, sym in (("btc", "BTC"), ("eth", "ETH")):
+            pts = daily_prices(sym)
+            if pts:
+                lt[key] = pts
+        f = safe(fng_history)
+        if f:
+            lt["fng"] = f
+        lt["refreshed"] = now_ts
+    doms = lt.setdefault("dom", [])
+    if not doms:  # 初回は溜まっている1時間ごとの履歴から日ごとの値を作る
+        for snap in hist:
+            if not doms or doms[-1][0] != day_of(snap["ts"]):
+                doms.append([day_of(snap["ts"]), round(snap["btc_dom"], 3)])
+    today = day_of(now_ts)
+    if not doms or doms[-1][0] != today:
+        doms.append([today, round(dom, 3)])
+    return lt
+
+
+def mock_longterm(now_ts):
+    random.seed(11)
+    lt = {"btc": [], "eth": [], "fng": [], "dom": [], "refreshed": now_ts}
+    b, e = 1000.0, 8.0
+    for t in range(day_of(LONG_START), day_of(now_ts) + 1, 86400):
+        i = (t - LONG_START) / 86400
+        b *= 1 + 0.0016 + 0.035 * math.sin(i / 90) * 0.1 + random.uniform(-0.035, 0.035)
+        e *= 1 + 0.0019 + 0.045 * math.sin(i / 70) * 0.1 + random.uniform(-0.045, 0.045)
+        lt["btc"].append([t, round(b, 2)])
+        lt["eth"].append([t, round(e, 2)])
+        if t >= 1517443200:  # 2018-02-01〜
+            lt["fng"].append([t, max(3, min(97, round(50 + 30 * math.sin(i / 45) + random.uniform(-12, 12))))])
+    for key, end in (("btc", 113400), ("eth", 4120)):  # サンプルの「今の価格」につながるように縮尺を合わせる
+        k = end / lt[key][-1][1]
+        lt[key] = [[t, round(v * k, 2)] for t, v in lt[key]]
+    for t in range(day_of(now_ts) - 20 * 86400, day_of(now_ts) + 1, 86400):
+        lt["dom"].append([t, round(57.1 + math.sin((day_of(now_ts) - t) / 86400 / 4) * 0.6, 3)])
+    return lt
 
 
 # ---------- 恐怖・強欲指数 ----------
@@ -504,7 +603,7 @@ def mock_all(now_ts):
                      "cats": {cid: [mc * (1 - h * 0.0008), random.uniform(-1, 3) if cid == "solana-ecosystem"
                                     else random.uniform(-2, 2)] for cid, _, mc in cats_def},
                      "chains": {n: random.randint(20, 80) for n, _ in CHAINS[:10]}})
-    market = {"btc_dom": 57.1, "btc_price": 113400, "btc_24h": 1.2, "cats": [
+    market = {"btc_dom": 57.1, "btc_price": 113400, "btc_24h": 1.2, "eth_price": 4120, "eth_24h": 2.3, "cats": [
         {"id": cid, "name": nm, "market_cap": mc, "market_cap_change_24h": random.uniform(-4, 9),
          "top_3_coins_id": ["coin-a", "coin-b", "coin-c"]} for cid, nm, mc in cats_def]}
     chains = [{"name": n, "symbol": s, "tvl": random.uniform(5e8, 6e10), "tvl_7d": random.uniform(-8, 12),
@@ -603,6 +702,7 @@ def main():
         "mock": MOCK,
         "btc": {"dom": dom, "dom_24h": dom - dom24 if dom24 is not None else None,
                 "dom_7d": dom7_delta, "price": market["btc_price"], "chg_24h": market["btc_24h"],
+                "eth_price": market.get("eth_price"), "eth_24h": market.get("eth_24h"),
                 "phase": phase_text(dom7_delta)},
         "dom_series": [[s["ts"], round(s["btc_dom"], 3)] for s in hist[-24 * 7:]],
         "fng": fng,
@@ -613,8 +713,12 @@ def main():
     }
     DOCS.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
-    if not MOCK:
+    if MOCK:
+        lt = mock_longterm(now_ts)
+    else:
         HIST_PATH.write_text(json.dumps(hist, separators=(",", ":")))
+        lt = update_longterm(load(LONG_PATH, {}), now_ts, dom, hist)
+    LONG_PATH.write_text(json.dumps(lt, separators=(",", ":")))
     print(f"done: {DATA_PATH.name} / chains={len(chains)} sectors={len(sectors)} deriv={dsrc}")
 
 
