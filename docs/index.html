@@ -10,16 +10,16 @@
 <style>
 :root{
   --bg:#E9EDF2; --surface:#F7F9FB; --ink:#17202E; --muted:#5B6778; --rule:#CCD4DE;
-  --cold:#3E7CB1; --mild:#7FA39A; --warm:#E3A33B; --hot:#D4432B; --out:#8792A3;
+  --cold:#3E7CB1; --mild:#7FA39A; --warm:#E3A33B; --hot:#D4432B; --out:#8792A3; --good:#2E8656;
   --num:"Barlow Condensed","Zen Kaku Gothic New",system-ui,sans-serif;
   --text:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){--bg:#121826;--surface:#1A2233;--ink:#E6EBF2;--muted:#8D99AB;--rule:#2B3549;--out:#5E6A7C}
+  :root:not([data-theme="light"]){--bg:#121826;--surface:#1A2233;--ink:#E6EBF2;--muted:#8D99AB;--rule:#2B3549;--out:#5E6A7C;--good:#4FB57E}
 }
-:root[data-theme="dark"]{--bg:#121826;--surface:#1A2233;--ink:#E6EBF2;--muted:#8D99AB;--rule:#2B3549;--out:#5E6A7C}
+:root[data-theme="dark"]{--bg:#121826;--surface:#1A2233;--ink:#E6EBF2;--muted:#8D99AB;--rule:#2B3549;--out:#5E6A7C;--good:#4FB57E}
 *,*::before,*::after{box-sizing:inherit}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--text);line-height:1.6;
@@ -42,6 +42,20 @@ h1{font-size:clamp(28px,6vw,40px);font-weight:700;margin:0;letter-spacing:.04em}
 .delta{font-size:14px;margin-left:6px}
 .up{color:var(--hot)} .down{color:var(--cold)}
 
+.mood{margin:-14px 0 30px;display:grid;grid-template-columns:auto 1fr;gap:4px 20px;align-items:end}
+.mood .big{font-size:52px;line-height:.9;font-weight:600}
+.mood .lbl{font-size:16px;font-weight:700;margin-left:8px}
+.mood .cap{font-size:13px;color:var(--muted)}
+.mood .gauge{position:relative;height:8px;border-radius:4px;margin:10px 0 6px;
+  background:linear-gradient(90deg,var(--cold),var(--mild) 50%,var(--hot))}
+.mood .gauge i{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
+.mood svg{width:100%;height:40px;display:block}
+.mood p{grid-column:1/-1;margin:8px 0 0;font-size:15px}
+@media (max-width:560px){.mood{grid-template-columns:1fr}}
+
+.picks{background:var(--surface);border-left:3px solid var(--good);padding:10px 14px;margin:0 0 14px;font-size:14px}
+.picks b{color:var(--good)}
+
 h2{font-size:19px;margin:0 0 4px;font-weight:700}
 .sub{margin:0 0 14px;color:var(--muted);font-size:13px}
 section{margin-top:36px}
@@ -58,8 +72,16 @@ section{margin-top:36px}
 .chain .stats{position:relative;display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0 0 62px;
   font-size:13px;color:var(--muted)}
 .chain .stats b{font-family:var(--num);font-weight:600;font-size:15px;color:var(--ink);margin-left:4px}
+.chain .sig{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:6px 96px 0 62px;font-size:13px}
+.chain .sig .px{color:var(--muted)}
+.chain .sig .px b{font-family:var(--num);font-weight:600;font-size:15px;color:var(--ink);margin-left:4px}
+.chip{font-size:12px;font-weight:700;padding:1px 8px;border-radius:4px;color:#fff;white-space:nowrap}
+.chain .entry{margin-left:auto;font-size:13px;font-weight:700;padding:2px 10px;border-radius:999px;
+  background:var(--good);color:#fff;white-space:nowrap}
+.chain .entry+.tag{margin-left:0}
 .chain .spark{position:absolute;right:14px;bottom:10px;width:84px;height:22px;opacity:.8}
-@media (max-width:560px){.chain .stats{margin-left:0}.chain .spark{display:none}
+@media (max-width:560px){.chain .stats,.chain .sig{margin-left:0;margin-right:0}
+  .chain .row{flex-wrap:wrap}.chain .entry{order:9;margin-left:0}.chain .spark{display:none}
   .dom{grid-template-columns:1fr}.dom .big{font-size:60px}}
 
 .sectors{display:grid;gap:0}
@@ -102,11 +124,19 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
       <dd>資金の指標のうち2つ以上がプラスで、FRがまだ0.02%未満。レバレッジが軽いまま実需のお金が入っている状態です。</dd>
       <dt>過熱気味</dt>
       <dd>FRが0.05%以上、またはOIが24時間で+25%以上。ロングが混んでいて、清算で急落しやすい状態です。</dd>
+      <dt>恐怖・強欲指数</dt>
+      <dd>相場全体の雰囲気を0〜100で表した値です（alternative.me）。25以下は恐怖が強く、75以上は強欲が強い状態です。75以上のときは「条件そろい」を出しません。</dd>
+      <dt>トレンド</dt>
+      <dd>4時間足の終値で、今の価格が7日平均・30日平均より上にあるかを見ています。価格 ＞ 7日平均 ＞ 30日平均なら上昇トレンド、逆なら下落トレンドです。</dd>
+      <dt>OIと価格のズレ</dt>
+      <dd>OIはドル建てなので、価格の上げ下げの影響を除いてから比べています。価格が上がってOIも増えていれば新しい買いが入っている、価格が動かないのにOIだけ急増していれば清算で急に動きやすい、という見方です。</dd>
+      <dt>条件そろい</dt>
+      <dd>「静かに流入中」＋「上昇トレンド」＋「OIに危ないズレがない」＋「恐怖・強欲指数が75未満」を満たしたチェーンです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
       <dt>セクターの対BTC</dt>
       <dd>CoinGeckoのカテゴリ時価総額の変化から、BTCの変化を引いた値です。連続時間は、BTCを上回り続けている時間です。</dd>
     </dl>
   </details>
-  <footer>データ: CoinGecko, DefiLlama, 取引所の公開API。投資判断はご自身で。</footer>
+  <footer>データ: CoinGecko, DefiLlama, alternative.me, 取引所の公開API。投資判断はご自身で。</footer>
 </main>
 <script>
 const $ = s => document.querySelector(s);
@@ -114,6 +144,10 @@ const heat = s => s==null ? 'var(--out)' : s>=75 ? 'var(--hot)' : s>=55 ? 'var(-
 const TAG = {hot:'var(--hot)', early:'var(--warm)', flat:'var(--muted)', out:'var(--cold)'};
 const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const sp = v => v==null ? '—' : (v>0?'+':'') + v.toFixed(Math.abs(v)<10?1:0) + '%';
+const TREND = {up:['上昇トレンド','var(--good)'], down:['下落トレンド','var(--cold)'], range:['もみ合い','var(--out)']};
+const DIV = {good:'var(--good)', weak:'var(--warm)', warn:'var(--hot)', flat:'var(--muted)'};
+const fngColor = v => v<=25 ? 'var(--cold)' : v<46 ? 'var(--mild)' : v<55 ? 'var(--muted)' : v<75 ? 'var(--warm)' : 'var(--hot)';
+const pt = v => v==null ? '' : (v>0?'+':'') + v;
 const fr = v => v==null ? '—' : (v*100).toFixed(3) + '%';
 
 function spark(vals, color, w=300, h=64){
@@ -138,17 +172,36 @@ function render(d){
       <div class="cap">過去7日 ${dd==null?'':`<span class="delta num ${dd<0?'down':'up'}">24h ${dd>0?'+':''}${dd.toFixed(2)}pt</span>`}</div></div>
     <p>${esc(b.phase)}</p></div>`;
 
+  const f = d.fng;
+  if(f){
+    h += `<div class="mood">
+      <div><div class="cap">恐怖・強欲指数</div>
+        <div><span class="big num" style="color:${fngColor(f.value)}">${f.value}</span><span class="lbl" style="color:${fngColor(f.value)}">${esc(f.label)}</span></div></div>
+      <div><div class="gauge"><i style="left:${f.value}%"></i></div>
+        ${spark(f.series||[], fngColor(f.value), 300, 40)}
+        <div class="cap">過去30日 ${f.d1==null?'':`<span class="num">前日比 ${pt(f.d1)}</span>`} ${f.d7==null?'':`<span class="num">・7日前比 ${pt(f.d7)}</span>`}</div></div>
+      <p>${esc(f.text)}</p></div>`;
+  }
+
   h += `<section><h2>チェーンの温度</h2><p class="sub">お金が入ってきていて、まだ過熱していない所ほど上に来ます。先物: ${esc(d.deriv_source||'取得できず')}</p>`;
   if(!d.chains.length) h += `<div class="empty">チェーンのデータがありません。</div>`;
+  const picks = d.chains.filter(c=>c.entry);
+  if(d.chains.length) h += `<div class="picks">${picks.length
+    ? `<b>条件がそろったチェーン:</b> ${picks.map(c=>esc(c.name)).join('、')}`
+    : '今は条件がそろったチェーンはありません。'}<br><span style="color:var(--muted);font-size:12px">静かに流入中 ＋ 上昇トレンド ＋ OIに危ないズレなし ＋ 相場全体が強欲すぎない</span></div>`;
   for(const c of d.chains){
     const col = heat(c.score);
     h += `<div class="chain">
       <div class="fill" style="width:${c.score??0}%;background:${col}"></div>
       <div class="row"><span class="score num" style="color:${col}">${c.score??'—'}</span>
         <span><span class="name">${esc(c.name)}</span>${c.symbol?`<span class="sym">${esc(c.symbol)}</span>`:''}</span>
+        ${c.entry?'<span class="entry">◎ 条件そろい</span>':''}
         <span class="tag" style="color:${TAG[c.label]}">${esc(c.label_text)}</span></div>
       <div class="stats"><span>ステーブル<b>${sp(c.stable_7d)}</b></span><span>DEX<b>${sp(c.dex_7d)}</b></span>
         <span>TVL<b>${sp(c.tvl_7d)}</b></span><span>OI 24h<b>${sp(c.oi_24h)}</b></span><span>FR<b>${fr(c.funding)}</b></span></div>
+      ${c.px_24h!=null?`<div class="sig">${c.trend?`<span class="chip" style="background:${TREND[c.trend][1]}">${TREND[c.trend][0]}</span>`:''}
+        <span class="px">価格 24h<b>${sp(c.px_24h)}</b></span><span class="px">7日線比<b>${sp(c.vs_ma7)}</b></span>
+        ${c.div?`<span style="color:${DIV[c.div]}">${esc(c.div_text)}</span>`:''}</div>`:''}
       <div class="spark">${spark(c.score_series||[], col, 84, 22)}</div>
     </div>`;
   }

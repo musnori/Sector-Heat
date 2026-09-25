@@ -44,6 +44,11 @@ FR_CALM = 0.0002   # 0.02%/8h 未満は落ち着いている扱い
 OI_HOT = 25        # OIが24hで+25%以上は過熱扱い
 MIN_CAT_MCAP = 3e8
 MAX_CATS = 80
+# 価格トレンドとOIのズレ
+PX_MOVE = 1.0      # 価格が24hで±1%以上動いたら「動いた」扱い
+OI_MOVE = 5        # 価格の影響を除いたOIが±5%以上で「増えた/減った」扱い
+OI_SURGE = 10      # 価格が動かないのにOIが+10%以上なら「OIだけ急増」
+FNG_GREED = 75     # 恐怖・強欲指数がこれ以上ならエントリー候補から外す
 
 
 # ---------- 共通 ----------
@@ -205,6 +210,104 @@ def fetch_derivs(symbols):
     return None, {}
 
 
+# ---------- 価格トレンド（4時間足・30日分） ----------
+def closes_binance(sym):
+    k = get("https://data-api.binance.vision/api/v3/klines",
+            params={"symbol": f"{sym}USDT", "interval": "4h", "limit": 181})
+    return [float(x[4]) for x in k]  # 古い順
+
+
+def closes_okx(sym):
+    d = get("https://www.okx.com/api/v5/market/candles",
+            params={"instId": f"{sym}-USDT", "bar": "4H", "limit": 181})["data"]
+    return [float(x[4]) for x in reversed(d)]  # 新しい順で返るので反転
+
+
+def trend_stats(closes):
+    """4時間足の終値から、24h変化・7日線/30日線との差・トレンドを出す"""
+    now = closes[-1]
+    ma7 = sum(closes[-42:]) / len(closes[-42:])
+    ma30 = sum(closes[-180:]) / len(closes[-180:]) if len(closes) >= 180 else None
+    if ma30 is None:
+        trend = None
+    elif now > ma7 > ma30:
+        trend = "up"
+    elif now < ma7 < ma30:
+        trend = "down"
+    else:
+        trend = "range"
+    return {"price": now, "px_24h": pct(now, closes[-7]) if len(closes) >= 7 else None,
+            "vs_ma7": pct(now, ma7), "vs_ma30": pct(now, ma30), "trend": trend}
+
+
+def fetch_prices(symbols):
+    sources = [["Binance", closes_binance, 0], ["OKX", closes_okx, 0]]
+    out = {}
+    for s in symbols:
+        for src in sources:
+            name, fn, fails = src
+            if fails >= 3:
+                continue  # 3回続けて失敗した取引所は以降使わない
+            c = safe(lambda: fn(s))
+            if c and len(c) >= 42:
+                out[s] = trend_stats(c)
+                src[2] = 0
+                break
+            src[2] += 1
+        time.sleep(0.2)
+    return out
+
+
+# ---------- 恐怖・強欲指数 ----------
+FNG_JA = {"Extreme Fear": "極端な恐怖", "Fear": "恐怖", "Neutral": "中立",
+          "Greed": "強欲", "Extreme Greed": "極端な強欲"}
+
+
+def fng_text(v):
+    if v <= 25:
+        return "恐怖が強い状態です。逆張りの買い場になりやすい一方、下げ止まりを確認してからが安全です。"
+    if v >= FNG_GREED:
+        return "強欲が強い状態です。天井付近のことが多いので、新しいエントリーは慎重に。"
+    if v < 46:
+        return "恐怖寄りです。慌てた売りが出やすい一方、仕込み場になることもあります。"
+    if v >= 55:
+        return "強欲寄りです。上がりやすい地合いですが、過熱のサインも合わせて確認を。"
+    return "中立圏です。個別のチェーンやセクターの動きを優先して見ましょう。"
+
+
+def fetch_fng():
+    d = get("https://api.alternative.me/fng/", params={"limit": 30})["data"]  # 新しい順
+    vals = [int(x["value"]) for x in d]
+    return {"value": vals[0], "label": FNG_JA.get(d[0]["value_classification"], d[0]["value_classification"]),
+            "d1": vals[0] - vals[1] if len(vals) > 1 else None,
+            "d7": vals[0] - vals[7] if len(vals) > 7 else None,
+            "series": list(reversed(vals)), "text": fng_text(vals[0])}
+
+
+# ---------- OIと価格のズレ ----------
+def oi_real(oi24, px24):
+    """OIはドル建てなので、価格が上がるだけで増える。その分を除いた増減"""
+    if oi24 is None or px24 is None:
+        return None
+    return ((1 + oi24 / 100) / (1 + px24 / 100) - 1) * 100
+
+
+def oi_div(px, oi):
+    if px is None or oi is None:
+        return None, None
+    if oi >= OI_SURGE and abs(px) < PX_MOVE:
+        return "warn", "価格は動かずOIだけ急増（清算に注意）"
+    if px >= PX_MOVE and oi >= OI_MOVE:
+        return "good", "新しい買いが入って上昇中"
+    if px >= PX_MOVE and oi <= -OI_MOVE:
+        return "weak", "売りの買い戻しで上昇（続きにくい）"
+    if px <= -PX_MOVE and oi >= OI_MOVE:
+        return "warn", "下げながら売りが積み上がり中"
+    if px <= -PX_MOVE and oi <= -OI_MOVE:
+        return "flat", "ポジションの整理が進行中"
+    return "flat", "目立ったズレなし"
+
+
 # ---------- スコア ----------
 def pct_rank(values):
     idx = sorted([i for i, v in enumerate(values) if v is not None], key=lambda i: values[i])
@@ -240,7 +343,16 @@ def score_chains(rows):
             s -= 15  # 資金流入があってもレバが混みすぎなら減点
         r["score"] = None if s is None else round(max(0, min(100, s)))
         r["label"], r["label_text"] = label(r)
+        r["oi_real"] = oi_real(r.get("oi_24h"), r.get("px_24h"))
+        r["div"], r["div_text"] = oi_div(r.get("px_24h"), r["oi_real"])
     rows.sort(key=lambda r: -1 if r["score"] is None else r["score"], reverse=True)
+
+
+def entry_check(r, fng):
+    """資金流入 + 上昇トレンド + OIに危ないズレなし + 相場全体が強欲すぎない"""
+    ok = (r["label"] == "early" and r.get("trend") == "up" and r.get("div") != "warn"
+          and (fng is None or fng["value"] < FNG_GREED))
+    r["entry"] = bool(ok)
 
 
 def build_sectors(m, hist, now_ts):
@@ -308,7 +420,22 @@ def mock_all(now_ts):
     derivs = {s: {"funding": random.choice([0.00005, 0.0001, 0.00015, 0.0003, 0.0007]),
                   "oi": random.uniform(1e8, 2e10), "oi_24h": random.uniform(-10, 30)}
               for _, s in CHAINS if s}
-    return hist, market, chains, ("Mock", derivs)
+    prices = {}
+    for _, s in CHAINS:
+        if not s:
+            continue
+        drift = random.uniform(-0.004, 0.005)
+        c, v = [], 100.0
+        for _ in range(181):
+            v *= 1 + drift + random.uniform(-0.02, 0.02)
+            c.append(v)
+        prices[s] = trend_stats(c)
+    fv = [max(5, min(95, round(50 + 25 * math.sin(i / 6) + random.uniform(-5, 5)))) for i in range(30)]
+    fv_label = next(t for lim, t in ((25, "極端な恐怖"), (46, "恐怖"), (54, "中立"), (75, "強欲"), (101, "極端な強欲"))
+                    if fv[-1] < lim)
+    fng = {"value": fv[-1], "label": fv_label, "d1": fv[-1] - fv[-2], "d7": fv[-1] - fv[-8],
+           "series": fv, "text": fng_text(fv[-1])}
+    return hist, market, chains, ("Mock", derivs), prices, fng
 
 
 # ---------- メイン ----------
@@ -316,7 +443,7 @@ def main():
     now_ts = int(time.time())
     warnings = []
     if MOCK:
-        hist, market, chains, (dsrc, derivs) = mock_all(now_ts)
+        hist, market, chains, (dsrc, derivs), prices, fng = mock_all(now_ts)
     else:
         hist = load(HIST_PATH, [])
         if not CG_KEY:
@@ -331,11 +458,21 @@ def main():
         dsrc, derivs = fetch_derivs([r["symbol"] for r in chains if r["symbol"]])
         if not derivs:
             warnings.append("取引所の先物データを取れませんでした（地域ブロックの可能性）。FRとOIなしで計算しています。")
+        print("価格...")
+        prices = fetch_prices([r["symbol"] for r in chains if r["symbol"]])
+        if not prices:
+            warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
+        print("恐怖・強欲指数...")
+        fng = safe(fetch_fng)
 
     for r in chains:
         d = derivs.get(r["symbol"] or "", {})
         r.update({"funding": d.get("funding"), "oi": d.get("oi"), "oi_24h": d.get("oi_24h")})
+        p = prices.get(r["symbol"] or "", {})
+        r.update({k: p.get(k) for k in ("price", "px_24h", "vs_ma7", "vs_ma30", "trend")})
     score_chains(chains)
+    for r in chains:
+        entry_check(r, fng)
 
     # スコアの推移（48時間）
     for r in chains:
@@ -359,6 +496,7 @@ def main():
                 "dom_7d": dom7_delta, "price": market["btc_price"], "chg_24h": market["btc_24h"],
                 "phase": phase_text(dom7_delta)},
         "dom_series": [[s["ts"], round(s["btc_dom"], 3)] for s in hist[-24 * 7:]],
+        "fng": fng,
         "chains": chains,
         "sectors": sectors,
         "deriv_source": dsrc,
