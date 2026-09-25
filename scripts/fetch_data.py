@@ -49,12 +49,16 @@ PX_MOVE = 1.0      # 価格が24hで±1%以上動いたら「動いた」扱い
 OI_MOVE = 5        # 価格の影響を除いたOIが±5%以上で「増えた/減った」扱い
 OI_SURGE = 10      # 価格が動かないのにOIが+10%以上なら「OIだけ急増」
 FNG_GREED = 75     # 恐怖・強欲指数がこれ以上ならエントリー候補から外す
+ENTRY_MIN_SCORE = 60  # 温度がこれ未満のチェーンは「条件そろい」にしない
+ENTRY_MAX = 3         # 「条件そろい」は温度の高い順に最大この件数まで
 # 注目トークン（各チェーンのDeFiトークン）
 TOKENS_PER_CHAIN = 5
 TOKEN_MIN_TVL = 5e6     # そのチェーン上のTVLがこれ未満のプロトコルは除外
 TOKEN_MIN_MCAP = 1e7    # 時価総額がこれ未満のトークンは除外
 TOKEN_SHARE = 0.5       # TVLの半分以上がそのチェーンにあるものだけ「そのチェーンのトークン」扱い
-TOKEN_SKIP_CATS = {"CEX", "Chain"}
+# トークンの値動きとTVLが結びつきにくい種類は除外（ブリッジは預かり資産、ステーキングは元の通貨がTVL）
+TOKEN_SKIP_CATS = {"CEX", "Chain", "Bridge", "Canonical Bridge", "Cross Chain Bridge", "Bridge Aggregators",
+                   "Liquid Staking", "Liquid Restaking", "Restaking", "Restaked BTC", "Indexes", "Basis Trading"}
 TOKEN_WEIGHTS = {"tvl_7d": 0.4, "rel_7d": 0.35, "turnover": 0.25}
 TOKEN_PUMP = 40         # 対BTCで7日+40%以上は「急騰後」
 
@@ -322,7 +326,7 @@ def rank_tokens(rows):
     return rows[:TOKENS_PER_CHAIN]
 
 
-def fetch_tokens(chain_names):
+def fetch_tokens(chain_names, native=None):
     """DefiLlamaのプロトコル一覧から各チェーンのトークンを拾い、CoinGeckoで価格を付ける"""
     picked = {n: {} for n in chain_names}  # chain -> gecko_id -> 候補
     # 「Aave V3」などの子プロトコルはトークンIDを親だけが持っていることがある
@@ -350,13 +354,18 @@ def fetch_tokens(chain_names):
         time.sleep(1)
     btc7 = (markets.get("bitcoin") or {}).get("price_change_percentage_7d_in_currency")
     out = {}
+    native = native or {}
     for n, cands in picked.items():
         rows = []
         for gid, t in cands.items():
             m = markets.get(gid)
             if not m or (m.get("market_cap") or 0) < TOKEN_MIN_MCAP:
                 continue
+            if (m.get("symbol") or "").upper() == (native.get(n) or ""):
+                continue  # チェーン自体の通貨はカード本体で見る
             px7 = m.get("price_change_percentage_7d_in_currency")
+            if 0.95 <= (m.get("current_price") or 0) <= 1.05 and abs(px7 or 0) < 2:
+                continue  # ステーブルコインっぽいものは除外
             t.update({"symbol": (m.get("symbol") or "").upper(), "mcap": m["market_cap"],
                       "px_24h": m.get("price_change_percentage_24h_in_currency"), "px_7d": px7,
                       "rel_7d": px7 - btc7 if (px7 is not None and btc7 is not None) else None,
@@ -434,8 +443,8 @@ def score_chains(rows):
 
 def entry_check(r, fng):
     """資金流入 + 上昇トレンド + OIに危ないズレなし + 相場全体が強欲すぎない"""
-    ok = (r["label"] == "early" and r.get("trend") == "up" and r.get("div") != "warn"
-          and (fng is None or fng["value"] < FNG_GREED))
+    ok = (r["label"] == "early" and r.get("trend") == "up" and r.get("div") not in ("warn", "weak")
+          and (r.get("score") or 0) >= ENTRY_MIN_SCORE and (fng is None or fng["value"] < FNG_GREED))
     r["entry"] = bool(ok)
 
 
@@ -559,7 +568,8 @@ def main():
         print("恐怖・強欲指数...")
         fng = safe(fetch_fng)
         print("注目トークン...")
-        tokens = safe(lambda: fetch_tokens([r["name"] for r in chains]), {})
+        tokens = safe(lambda: fetch_tokens([r["name"] for r in chains],
+                                           {r["name"]: r["symbol"] for r in chains if r["symbol"]}), {})
 
     for r in chains:
         d = derivs.get(r["symbol"] or "", {})
@@ -570,6 +580,8 @@ def main():
     for r in chains:
         entry_check(r, fng)
         r["tokens"] = tokens.get(r["name"], [])
+    for i, r in enumerate([r for r in chains if r["entry"]]):  # chainsは温度の高い順
+        r["entry"] = i < ENTRY_MAX
 
     # スコアの推移（48時間）
     for r in chains:
