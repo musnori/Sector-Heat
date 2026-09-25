@@ -72,15 +72,29 @@ section{margin-top:36px}
 .chain .stats{position:relative;display:flex;flex-wrap:wrap;gap:4px 16px;margin:6px 0 0 62px;
   font-size:13px;color:var(--muted)}
 .chain .stats b{font-family:var(--num);font-weight:600;font-size:15px;color:var(--ink);margin-left:4px}
-.chain .sig{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:6px 96px 0 62px;font-size:13px}
+.chain .sig{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:6px 0 0 62px;font-size:13px}
 .chain .sig .px{color:var(--muted)}
 .chain .sig .px b{font-family:var(--num);font-weight:600;font-size:15px;color:var(--ink);margin-left:4px}
 .chip{font-size:12px;font-weight:700;padding:1px 8px;border-radius:4px;color:#fff;white-space:nowrap}
 .chain .entry{margin-left:auto;font-size:13px;font-weight:700;padding:2px 10px;border-radius:999px;
   background:var(--good);color:#fff;white-space:nowrap}
 .chain .entry+.tag{margin-left:0}
-.chain .spark{position:absolute;right:14px;bottom:10px;width:84px;height:22px;opacity:.8}
-@media (max-width:560px){.chain .stats,.chain .sig{margin-left:0;margin-right:0}
+.chain .spark{margin-left:auto;align-self:center;width:84px;height:22px;opacity:.8}
+.chain .spark svg{display:block;width:84px;height:22px}
+details.toks{position:relative;margin:8px 0 0 62px;padding:8px 12px}
+.toks summary{font-size:13px;font-weight:700;cursor:pointer;color:var(--ink);width:max-content}
+.toks table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
+.toks th{font-weight:500;color:var(--muted);text-align:right;padding:3px 6px;font-size:12px;white-space:nowrap}
+.toks td{padding:5px 6px;border-top:1px solid var(--rule);text-align:right;white-space:nowrap}
+.toks th:first-child,.toks td:first-child{text-align:left;padding-left:0}
+.toks td:first-child b{font-family:var(--num);font-size:15px}
+.toks td:first-child span{display:block;color:var(--muted);font-size:11px;max-width:16em;overflow:hidden;text-overflow:ellipsis}
+.toks .num{font-weight:600;font-size:14px}
+.toks .lt{font-weight:700;font-size:12px;text-align:left;white-space:normal;min-width:6em}
+.toks p{margin:6px 0 0;font-size:11px;color:var(--muted)}
+@media (max-width:560px){.chain .stats,.chain .sig,details.toks{margin-left:0;margin-right:0}
+  .toks .hide-sm{display:none}.toks td,.toks th{padding-left:4px;padding-right:4px}
+  .toks td:first-child span{max-width:8em}
   .chain .row{flex-wrap:wrap}.chain .entry{order:9;margin-left:0}.chain .spark{display:none}
   .dom{grid-template-columns:1fr}.dom .big{font-size:60px}}
 
@@ -132,6 +146,8 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
       <dd>OIはドル建てなので、価格の上げ下げの影響を除いてから比べています。価格が上がってOIも増えていれば新しい買いが入っている、価格が動かないのにOIだけ急増していれば清算で急に動きやすい、という見方です。</dd>
       <dt>条件そろい</dt>
       <dd>「静かに流入中」＋「上昇トレンド」＋「OIに危ないズレがない」＋「恐怖・強欲指数が75未満」を満たしたチェーンです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
+      <dt>注目トークン</dt>
+      <dd>そのチェーンに預け入れ（TVL）の半分以上があるDeFiトークンを、「TVLの7日変化」「価格の7日変化−BTCの7日変化」「回転率（24h出来高÷時価総額）」で順位づけした上位5つです。「資金流入・価格は出遅れ」は、お金は入っているのに価格がまだBTC以下の、先回りの候補です。「急騰後」は対BTCで7日+40%以上で、飛び乗りは危険です。</dd>
       <dt>セクターの対BTC</dt>
       <dd>CoinGeckoのカテゴリ時価総額の変化から、BTCの変化を引いた値です。連続時間は、BTCを上回り続けている時間です。</dd>
     </dl>
@@ -147,6 +163,7 @@ const sp = v => v==null ? '—' : (v>0?'+':'') + v.toFixed(Math.abs(v)<10?1:0) +
 const TREND = {up:['上昇トレンド','var(--good)'], down:['下落トレンド','var(--cold)'], range:['もみ合い','var(--out)']};
 const DIV = {good:'var(--good)', weak:'var(--warm)', warn:'var(--hot)', flat:'var(--muted)'};
 const fngColor = v => v<=25 ? 'var(--cold)' : v<46 ? 'var(--mild)' : v<55 ? 'var(--muted)' : v<75 ? 'var(--warm)' : 'var(--hot)';
+const TOK = {early:'var(--good)', good:'var(--warm)', weak:'var(--muted)', hot:'var(--hot)', out:'var(--cold)', flat:'var(--muted)'};
 const pt = v => v==null ? '' : (v>0?'+':'') + v;
 const fr = v => v==null ? '—' : (v*100).toFixed(3) + '%';
 
@@ -198,11 +215,17 @@ function render(d){
         ${c.entry?'<span class="entry">◎ 条件そろい</span>':''}
         <span class="tag" style="color:${TAG[c.label]}">${esc(c.label_text)}</span></div>
       <div class="stats"><span>ステーブル<b>${sp(c.stable_7d)}</b></span><span>DEX<b>${sp(c.dex_7d)}</b></span>
-        <span>TVL<b>${sp(c.tvl_7d)}</b></span><span>OI 24h<b>${sp(c.oi_24h)}</b></span><span>FR<b>${fr(c.funding)}</b></span></div>
+        <span>TVL<b>${sp(c.tvl_7d)}</b></span><span>OI 24h<b>${sp(c.oi_24h)}</b></span><span>FR<b>${fr(c.funding)}</b></span>
+        <div class="spark">${spark(c.score_series||[], col, 84, 22)}</div></div>
       ${c.px_24h!=null?`<div class="sig">${c.trend?`<span class="chip" style="background:${TREND[c.trend][1]}">${TREND[c.trend][0]}</span>`:''}
         <span class="px">価格 24h<b>${sp(c.px_24h)}</b></span><span class="px">7日線比<b>${sp(c.vs_ma7)}</b></span>
         ${c.div?`<span style="color:${DIV[c.div]}">${esc(c.div_text)}</span>`:''}</div>`:''}
-      <div class="spark">${spark(c.score_series||[], col, 84, 22)}</div>
+      ${(c.tokens||[]).length?`<details class="toks"><summary>注目トークン（${c.tokens.length}）</summary>
+        <table><thead><tr><th>トークン</th><th>TVL 7日</th><th>対BTC 7日</th><th class="hide-sm">回転率</th><th style="text-align:left">判定</th></tr></thead><tbody>
+        ${c.tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b><span>${esc(t.name)}${t.cat?' ・ '+esc(t.cat):''}</span></td>
+          <td class="num">${sp(t.tvl_7d)}</td><td class="num">${sp(t.rel_7d)}</td><td class="num hide-sm">${t.turnover==null?'—':t.turnover.toFixed(1)+'%'}</td>
+          <td class="lt" style="color:${TOK[t.label]||'var(--muted)'}">${esc(t.label_text)}</td></tr>`).join('')}
+        </tbody></table><p>このチェーンで預け入れ（TVL）の多いDeFiトークンから選んでいます。ミームコインは含みません。</p></details>`:''}
     </div>`;
   }
   h += `</section>`;
