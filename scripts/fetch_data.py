@@ -49,6 +49,14 @@ PX_MOVE = 1.0      # 価格が24hで±1%以上動いたら「動いた」扱い
 OI_MOVE = 5        # 価格の影響を除いたOIが±5%以上で「増えた/減った」扱い
 OI_SURGE = 10      # 価格が動かないのにOIが+10%以上なら「OIだけ急増」
 FNG_GREED = 75     # 恐怖・強欲指数がこれ以上ならエントリー候補から外す
+# 注目トークン（各チェーンのDeFiトークン）
+TOKENS_PER_CHAIN = 5
+TOKEN_MIN_TVL = 5e6     # そのチェーン上のTVLがこれ未満のプロトコルは除外
+TOKEN_MIN_MCAP = 1e7    # 時価総額がこれ未満のトークンは除外
+TOKEN_SHARE = 0.5       # TVLの半分以上がそのチェーンにあるものだけ「そのチェーンのトークン」扱い
+TOKEN_SKIP_CATS = {"CEX", "Chain"}
+TOKEN_WEIGHTS = {"tvl_7d": 0.4, "rel_7d": 0.35, "turnover": 0.25}
+TOKEN_PUMP = 40         # 対BTCで7日+40%以上は「急騰後」
 
 
 # ---------- 共通 ----------
@@ -284,6 +292,82 @@ def fetch_fng():
             "series": list(reversed(vals)), "text": fng_text(vals[0])}
 
 
+# ---------- 注目トークン ----------
+def token_label(t):
+    tvl7, rel7 = t.get("tvl_7d"), t.get("rel_7d")
+    if rel7 is not None and rel7 >= TOKEN_PUMP:
+        return "hot", "急騰後・飛び乗り注意"
+    if tvl7 is None or rel7 is None:
+        return "flat", "判定材料不足"
+    if tvl7 >= 3 and rel7 <= 0:
+        return "early", "資金流入・価格は出遅れ"
+    if tvl7 > 0 and rel7 > 0:
+        return "good", "資金も価格も上向き"
+    if tvl7 <= 0 and rel7 > 0:
+        return "weak", "価格だけ先行"
+    return "out", "弱い"
+
+
+def rank_tokens(rows):
+    ranks = {k: pct_rank([r.get(k) for r in rows]) for k in TOKEN_WEIGHTS}
+    for i, r in enumerate(rows):
+        tot = w = 0.0
+        for k, wt in TOKEN_WEIGHTS.items():
+            if ranks[k][i] is not None:
+                tot += ranks[k][i] * wt
+                w += wt
+        r["score"] = round(tot / w * 100) if w else None
+        r["label"], r["label_text"] = token_label(r)
+    rows.sort(key=lambda r: -1 if r["score"] is None else r["score"], reverse=True)
+    return rows[:TOKENS_PER_CHAIN]
+
+
+def fetch_tokens(chain_names):
+    """DefiLlamaのプロトコル一覧から各チェーンのトークンを拾い、CoinGeckoで価格を付ける"""
+    picked = {n: {} for n in chain_names}  # chain -> gecko_id -> 候補
+    # 「Aave V3」などの子プロトコルはトークンIDを親だけが持っていることがある
+    parents = safe(lambda: get("https://api.llama.fi/lite/protocols2").get("parentProtocols"), []) or []
+    parent_gid = {x.get("id"): x.get("gecko_id") for x in parents if x.get("gecko_id")}
+    for p in get("https://api.llama.fi/protocols"):
+        gid = p.get("gecko_id") or parent_gid.get(p.get("parentProtocol"))
+        if not gid or p.get("category") in TOKEN_SKIP_CATS:
+            continue
+        total = p.get("tvl") or 0
+        ct = p.get("chainTvls") or {}
+        for n in chain_names:
+            v = ct.get(n) or 0
+            if v >= TOKEN_MIN_TVL and v >= total * TOKEN_SHARE:
+                cur = picked[n].get(gid)
+                if not cur or v > cur["tvl"]:  # V2/V3など同じトークンは大きい方を使う
+                    picked[n][gid] = {"id": gid, "name": p.get("name"), "cat": p.get("category"),
+                                      "tvl": v, "tvl_7d": p.get("change_7d")}
+    ids = sorted({g for d in picked.values() for g in d} | {"bitcoin"})
+    markets = {}
+    for i in range(0, len(ids), 100):
+        rows = cg("/coins/markets", {"vs_currency": "usd", "ids": ",".join(ids[i:i + 100]),
+                                     "per_page": 250, "price_change_percentage": "24h,7d"})
+        markets.update({m["id"]: m for m in rows})
+        time.sleep(1)
+    btc7 = (markets.get("bitcoin") or {}).get("price_change_percentage_7d_in_currency")
+    out = {}
+    for n, cands in picked.items():
+        rows = []
+        for gid, t in cands.items():
+            m = markets.get(gid)
+            if not m or (m.get("market_cap") or 0) < TOKEN_MIN_MCAP:
+                continue
+            px7 = m.get("price_change_percentage_7d_in_currency")
+            t.update({"symbol": (m.get("symbol") or "").upper(), "mcap": m["market_cap"],
+                      "px_24h": m.get("price_change_percentage_24h_in_currency"), "px_7d": px7,
+                      "rel_7d": px7 - btc7 if (px7 is not None and btc7 is not None) else None,
+                      "turnover": (m.get("total_volume") or 0) / m["market_cap"] * 100})
+            rows.append(t)
+        if rows:
+            out[n] = rank_tokens(rows)
+    print(f"  tokens: {sum(len(v) for v in out.values())} ({len(out)} chains)")
+    return out
+
+
 # ---------- OIと価格のズレ ----------
 def oi_real(oi24, px24):
     """OIはドル建てなので、価格が上がるだけで増える。その分を除いた増減"""
@@ -435,7 +519,17 @@ def mock_all(now_ts):
                     if fv[-1] < lim)
     fng = {"value": fv[-1], "label": fv_label, "d1": fv[-1] - fv[-2], "d7": fv[-1] - fv[-8],
            "series": fv, "text": fng_text(fv[-1])}
-    return hist, market, chains, ("Mock", derivs), prices, fng
+    cats = ["Dexs", "Lending", "Liquid Staking", "Derivatives", "Yield", "CDP"]
+    tokens = {}
+    for c in chains:
+        rows = [{"id": f"tok-{c['name']}-{i}", "name": f"{c['name'].split()[0]} {cats[i % 6]} {i + 1}",
+                 "symbol": f"{c['name'][:2].upper()}T{i + 1}", "cat": cats[i % 6],
+                 "tvl": random.uniform(5e6, 3e9), "tvl_7d": random.uniform(-15, 25),
+                 "mcap": random.uniform(1e7, 5e9), "px_24h": random.uniform(-8, 12),
+                 "px_7d": random.uniform(-20, 45), "rel_7d": random.uniform(-20, 50),
+                 "turnover": random.uniform(1, 40)} for i in range(8)]
+        tokens[c["name"]] = rank_tokens(rows)
+    return hist, market, chains, ("Mock", derivs), prices, fng, tokens
 
 
 # ---------- メイン ----------
@@ -443,7 +537,7 @@ def main():
     now_ts = int(time.time())
     warnings = []
     if MOCK:
-        hist, market, chains, (dsrc, derivs), prices, fng = mock_all(now_ts)
+        hist, market, chains, (dsrc, derivs), prices, fng, tokens = mock_all(now_ts)
     else:
         hist = load(HIST_PATH, [])
         if not CG_KEY:
@@ -464,6 +558,8 @@ def main():
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
         print("恐怖・強欲指数...")
         fng = safe(fetch_fng)
+        print("注目トークン...")
+        tokens = safe(lambda: fetch_tokens([r["name"] for r in chains]), {})
 
     for r in chains:
         d = derivs.get(r["symbol"] or "", {})
@@ -473,6 +569,7 @@ def main():
     score_chains(chains)
     for r in chains:
         entry_check(r, fng)
+        r["tokens"] = tokens.get(r["name"], [])
 
     # スコアの推移（48時間）
     for r in chains:
