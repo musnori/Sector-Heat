@@ -2,7 +2,7 @@ name: update-data
 
 on:
   schedule:
-    - cron: "7 * * * *"   # 毎時7分（UTC）。混雑時は数分〜遅れることがあります
+    - cron: "13 * * * *"  # 毎時13分。混雑時は数分〜遅れることがあります
   workflow_dispatch:       # Actionsタブから手動実行もできる
 
 permissions:
