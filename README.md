@@ -17,7 +17,8 @@
 | OIと価格のズレ | 上の2つから計算 | 新しい買いで上がっているのか、OIだけ膨らんで危ないのか |
 | 恐怖・強欲指数 | alternative.me | 相場全体の雰囲気（恐怖＝買い場になりやすい、強欲＝天井に注意） |
 | 長期チャート（3ヶ月〜全期間） | Binance（ダメならOKX）の日足、alternative.me | BTC・ETHの価格と恐怖・強欲指数の長い流れ。BTCドミナンスは無料APIに過去データが無いため、このツールが1日1点ずつ記録 |
-| 注目トークン | DefiLlama + CoinGecko | 各チェーンのDeFiトークンのうち、資金（TVL）が入っていて価格がBTCより強い／まだ出遅れているもの |
+| 取引できるトークン | DefiLlama + CoinGecko + Hyperliquid + Ostium | 各チェーンのDeFiトークン・エコシステム銘柄のうち、Hyperliquid か Ostium で取引できるもの（出来高順） |
+| セクターの作戦 | CoinGecko + Hyperliquid + Ostium | BTCより強い／弱いセクターと、その中で取引できる銘柄。「初動・継続・過熱・資金流出」と、先頭・出遅れ候補・ショート候補の目印 |
 
 温度60以上で「静かに流入中」＋「上昇トレンド」＋「OIに危ないズレなし」＋「恐怖・強欲指数が75未満」がそろったチェーンのうち、温度の高い上位3つに **◎ 条件そろい** が付きます。エントリーを検討する候補の目安です。
 
@@ -69,7 +70,9 @@ python -m http.server -d docs 8000
 - `MIN_CAT_MCAP` / `MAX_CATS`: 表示するセクターの最低時価総額と件数
 - `PX_MOVE` / `OI_MOVE` / `OI_SURGE`: OIと価格のズレを判定するライン
 - `FNG_GREED`: これ以上の強欲では「条件そろい」を出さない
-- `TOKENS_PER_CHAIN` / `TOKEN_MIN_TVL` / `TOKEN_MIN_MCAP`: 注目トークンの件数と足切りライン
+- `TOKENS_PER_CHAIN` / `TOKEN_MIN_TVL` / `TOKEN_SHARE`: 取引できるトークンの件数と拾う条件
+- `PLAN_UP` / `PLAN_DOWN` / `PLAN_COINS`: セクターの作戦に出すセクター数と銘柄数
+- `OSTIUM_FALLBACK`: Ostium の銘柄一覧が取れなかったときに使うリスト
 
 チェーン名は DefiLlama の表記に合わせる必要があります（見つからないものはログに `skip` と出ます）。
 

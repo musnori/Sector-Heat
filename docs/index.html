@@ -88,16 +88,34 @@ details.toks{position:relative;margin:8px 0 0 62px;padding:8px 12px}
 .toks td{padding:5px 6px;border-top:1px solid var(--rule);text-align:right;white-space:nowrap}
 .toks th:first-child,.toks td:first-child{text-align:left;padding-left:0}
 .toks td:first-child b{font-family:var(--num);font-size:15px}
-.toks td:first-child span{display:block;color:var(--muted);font-size:11px;max-width:16em;overflow:hidden;text-overflow:ellipsis}
+.toks td:first-child span.sub{display:block;color:var(--muted);font-size:11px;max-width:16em;overflow:hidden;text-overflow:ellipsis}
 .toks .num{font-weight:600;font-size:14px}
 .toks .lt{font-weight:700;font-size:12px;text-align:left;white-space:normal;min-width:6em}
 .toks p{margin:6px 0 0;font-size:11px;color:var(--muted)}
 @media (max-width:560px){.chain .stats,.chain .sig,details.toks{margin-left:0;margin-right:0}
   .toks .hide-sm{display:none}.toks td,.toks th{padding-left:4px;padding-right:4px}
-  .toks td:first-child span{max-width:8em}
+  .toks td:first-child span.sub{max-width:8em}
   .chain .row{flex-wrap:wrap}.chain .entry{order:9;margin-left:0}.chain .spark{display:none}
   .dom{grid-template-columns:1fr}.dom .big{font-size:60px}}
 
+.plan{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:10px}
+.plan h3{grid-column:1/-1;font-size:15px;margin:10px 0 -2px}
+.pc{background:var(--surface);border-radius:8px;padding:12px 14px;border-top:3px solid var(--rule)}
+.pc-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}
+.pc-h b{font-size:16px}
+.pc-h .num{margin-left:auto;font-size:20px;font-weight:600}
+.pc-m{font-size:12px;color:var(--muted);margin-top:2px}
+.pc-a{font-size:13px;margin:8px 0 6px;font-weight:500}
+.pc table{width:100%;border-collapse:collapse;font-size:13px}
+.pc td{padding:4px 4px;border-top:1px solid var(--rule);white-space:nowrap;text-align:right}
+.pc td:first-child{text-align:left;padding-left:0}
+.pc td:first-child b{font-family:var(--num);font-size:15px;margin-right:4px}
+.pc .num{font-weight:600}
+.pc .tg{font-size:11px;font-weight:700;text-align:left;padding-left:8px}
+.ven{display:inline-block;font-size:10px;font-weight:700;padding:0 5px;border-radius:3px;border:1px solid var(--rule);color:var(--muted);margin-right:3px;vertical-align:1px}
+details.allsec{margin-top:14px;background:none;padding:0}
+details.allsec summary{font-size:14px;margin-bottom:8px}
+@media (max-width:560px){.plan{grid-template-columns:1fr}}
 .sectors{display:grid;gap:0}
 .sec{display:grid;grid-template-columns:minmax(0,1fr) 42% 84px;gap:10px;align-items:center;
   padding:9px 0;border-top:1px solid var(--rule);font-size:14px}
@@ -165,8 +183,10 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
       <dd>OIはドル建てなので、価格の上げ下げの影響を除いてから比べています。価格が上がってOIも増えていれば新しい買いが入っている、価格が動かないのにOIだけ急増していれば清算で急に動きやすい、という見方です。</dd>
       <dt>条件そろい</dt>
       <dd>温度60以上で、「静かに流入中」＋「上昇トレンド」＋「OIに危ないズレがない（急増・買い戻し主導でない）」＋「恐怖・強欲指数が75未満」を満たしたチェーンのうち、温度の高い上位3つです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
-      <dt>注目トークン</dt>
-      <dd>そのチェーンに預け入れ（TVL）の半分以上があるDeFiトークン（ブリッジ・ステーキング系・ステーブルコイン・チェーン自体の通貨は除く）を、「TVLの7日変化」「価格の7日変化−BTCの7日変化」「回転率（24h出来高÷時価総額）」で順位づけした上位5つです。「資金流入・価格は出遅れ」は、お金は入っているのに価格がまだBTC以下の、先回りの候補です。「急騰後」は対BTCで7日+40%以上で、飛び乗りは危険です。</dd>
+      <dt>取引できるトークン</dt>
+      <dd>そのチェーンのDeFiトークン（DefiLlama）とエコシステムの銘柄（CoinGecko）のうち、Hyperliquid（HL）かOstium（Ost）で取引できるものを出来高の多い順に最大8つ並べています。値動きと資金調達率はHyperliquidの値です。</dd>
+      <dt>セクターの作戦</dt>
+      <dd>対BTCで強いセクター上位4つと弱いセクター2つを選び、取引できる銘柄を並べています。「初動」は強くなり始め、「継続」は12時間以上BTC超えか銘柄の7日中央値が+10%以上、「過熱」は対BTC 24hで+10%以上か7日中央値+40%以上です。「先頭」はそのセクターで一番上がっている銘柄、「出遅れ候補」はセクターの中央値より上がっておらず資金調達率も低い銘柄、「ショート候補」は弱いセクターの中でも特に下がっている銘柄です。</dd>
       <dt>セクターの対BTC</dt>
       <dd>CoinGeckoのカテゴリ時価総額の変化から、BTCの変化を引いた値です。連続時間は、BTCを上回り続けている時間です。</dd>
     </dl>
@@ -182,7 +202,10 @@ const sp = v => v==null ? '—' : (v>0?'+':'') + v.toFixed(Math.abs(v)<10?1:0) +
 const TREND = {up:['上昇トレンド','var(--good)'], down:['下落トレンド','var(--cold)'], range:['もみ合い','var(--out)']};
 const DIV = {good:'var(--good)', weak:'var(--warm)', warn:'var(--hot)', flat:'var(--muted)'};
 const fngColor = v => v<=25 ? 'var(--cold)' : v<46 ? 'var(--mild)' : v<55 ? 'var(--muted)' : v<75 ? 'var(--warm)' : 'var(--hot)';
-const TOK = {early:'var(--good)', good:'var(--warm)', weak:'var(--muted)', hot:'var(--hot)', out:'var(--cold)', flat:'var(--muted)'};
+const PH = {early:'var(--good)', cont:'var(--warm)', hot:'var(--hot)', down:'var(--cold)'};
+const TAGC = {'先頭':'var(--warm)', '出遅れ候補':'var(--good)', 'ショート候補':'var(--cold)'};
+const ven = vs => (vs||[]).map(v=>`<span class="ven">${v==='HL'?'HL':'Ost'}</span>`).join('');
+const vol = v => v==null ? '—' : v>=1e9 ? '$'+(v/1e9).toFixed(1)+'B' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+'M' : '$'+(v/1e3).toFixed(0)+'k';
 const pt = v => v==null ? '' : (v>0?'+':'') + v;
 const fr = v => v==null ? '—' : (v*100).toFixed(3) + '%';
 
@@ -239,27 +262,37 @@ function render(d){
       ${c.px_24h!=null?`<div class="sig">${c.trend?`<span class="chip" style="background:${TREND[c.trend][1]}">${TREND[c.trend][0]}</span>`:''}
         <span class="px">価格 24h<b>${sp(c.px_24h)}</b></span><span class="px">7日線比<b>${sp(c.vs_ma7)}</b></span>
         ${c.div?`<span style="color:${DIV[c.div]}">${esc(c.div_text)}</span>`:''}</div>`:''}
-      ${(c.tokens||[]).length?`<details class="toks"><summary>注目トークン（${c.tokens.length}）</summary>
-        <table><thead><tr><th>トークン</th><th>TVL 7日</th><th>対BTC 7日</th><th class="hide-sm">回転率</th><th style="text-align:left">判定</th></tr></thead><tbody>
-        ${c.tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b><span>${esc(t.name)}${t.cat?' ・ '+esc(t.cat):''}</span></td>
-          <td class="num">${sp(t.tvl_7d)}</td><td class="num">${sp(t.rel_7d)}</td><td class="num hide-sm">${t.turnover==null?'—':t.turnover.toFixed(1)+'%'}</td>
-          <td class="lt" style="color:${TOK[t.label]||'var(--muted)'}">${esc(t.label_text)}</td></tr>`).join('')}
-        </tbody></table><p>このチェーンで預け入れ（TVL）の多いDeFiトークンから選んでいます。ミームコインは含みません。</p></details>`:''}
+      ${(c.tokens||[]).length?`<details class="toks"><summary>取引できるトークン（${c.tokens.length}）</summary>
+        <table><thead><tr><th>トークン</th><th>24h</th><th class="hide-sm">7日</th><th>FR 8h</th><th>出来高</th></tr></thead><tbody>
+        ${c.tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b> ${ven(t.venues)}<span class="sub">${esc([t.name,t.cat].filter(Boolean).join(' ・ '))}</span></td>
+          <td class="num">${sp(t.chg_24h)}</td><td class="num hide-sm">${sp(t.px_7d)}</td><td class="num">${fr(t.fr8h)}</td><td class="num">${vol(t.vol)}</td></tr>`).join('')}
+        </tbody></table><p>このチェーンのDeFiトークンとエコシステムの銘柄のうち、Hyperliquid（HL）かOstium（Ost）で取引できるものを出来高順に並べています。</p></details>`:''}
     </div>`;
   }
   h += `</section>`;
 
+  const pl = d.plan || {up:[], down:[]};
+  const card = s => `<div class="pc" style="border-top-color:${PH[s.phase]}">
+    <div class="pc-h"><b>${esc(s.name)}</b><span class="chip" style="background:${PH[s.phase]}">${esc(s.phase_text)}</span><span class="num">${sp(s.rel_24h)}</span></div>
+    <div class="pc-m">対BTC 24h${s.streak_h>=2?` ・ ${s.streak_h}時間BTC超え`:''}${s.rel_7d!=null?` ・ 対BTC 7日 ${sp(s.rel_7d)}`:''}${s.med_7d!=null?` ・ 銘柄の7日中央値 ${sp(s.med_7d)}`:''}</div>
+    <div class="pc-a">${esc(s.action)}</div>
+    <table><tbody>${s.coins.map(c=>`<tr><td><b>${esc(c.symbol)}</b>${ven(c.venues)}</td><td class="num">${sp(c.chg_24h)}</td>
+      <td style="color:var(--muted)">FR ${fr(c.fr8h)}</td><td class="tg" style="color:${TAGC[c.tag]||'var(--muted)'}">${esc(c.tag||'')}</td></tr>`).join('')}</tbody></table></div>`;
+  h += `<section><h2>セクターの作戦</h2><p class="sub">BTCより強いセクターと弱いセクターを選び、Hyperliquid（HL）とOstium（Ost）で取引できる銘柄を出来高順に並べています。数字は24時間の値動き、FRは8時間あたりの資金調達率です。</p>`;
+  if(!pl.up.length && !pl.down.length) h += `<div class="empty">次のデータ更新で表示されます。</div>`;
+  else h += `<div class="plan">${pl.up.length?`<h3>資金が向かっているセクター</h3>${pl.up.map(card).join('')}`:''}
+    ${pl.down.length?`<h3>資金が抜けているセクター</h3>${pl.down.map(card).join('')}`:''}</div>`;
   const secs = d.sectors, max = Math.max(4, ...secs.map(s=>Math.abs(s.rel_24h)));
-  h += `<section><h2>セクターの勢い（対BTC・24時間）</h2><p class="sub">中央線より右がBTCより強いセクターです。</p><div class="sectors" id="secs">`;
+  h += `<details class="allsec"><summary>全セクター一覧（対BTC・24時間）</summary><p class="sub">中央線より右がBTCより強いセクターです。</p><div class="sectors" id="secs">`;
   secs.forEach((s,i)=>{
     const w = Math.min(50, Math.abs(s.rel_24h)/max*50), pos = s.rel_24h>=0;
-    const note = [s.rel_7d!=null?`7日 ${sp(s.rel_7d)}`:null, s.streak>1?`${s.streak}時間連続でBTC超え`:null].filter(Boolean).join('　');
+    const note = [s.rel_7d!=null?`7日 ${sp(s.rel_7d)}`:null, (s.streak_h??0)>=2?`${s.streak_h}時間BTC超え`:null].filter(Boolean).join('　');
     h += `<div class="sec"${i>=15?' hidden':''}>
       <div class="nm"><div>${esc(s.name)}</div><span>${esc(note||s.top.join(', '))}</span></div>
       <div class="bar"><i style="${pos?'left:50%':`right:50%`};width:${w}%;background:${pos?'var(--warm)':'var(--cold)'}"></i></div>
       <div class="v num">${sp(s.rel_24h)}<small>単体 ${sp(s.chg_24h)}</small></div></div>`;
   });
-  h += `</div>${secs.length>15?`<button class="more" id="more">残り${secs.length-15}件を表示</button>`:''}</section>`;
+  h += `</div>${secs.length>15?`<button class="more" id="more">残り${secs.length-15}件を表示</button>`:''}</details></section>`;
 
   h += `<section id="long"><h2>長期チャート</h2><p class="sub">BTC・ETHの価格、BTCドミナンス、恐怖・強欲指数を同じ時間軸で並べています。グラフをなぞると、その日の値が全部出ます。</p>
     <div class="ranges" role="group" aria-label="期間">${RANGES.map(([n,l])=>`<button data-r="${n}" aria-pressed="${n===RANGE}">${l}</button>`).join('')}
