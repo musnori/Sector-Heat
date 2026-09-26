@@ -54,16 +54,30 @@ OI_SURGE = 10      # 価格が動かないのにOIが+10%以上なら「OIだけ
 FNG_GREED = 75     # 恐怖・強欲指数がこれ以上ならエントリー候補から外す
 ENTRY_MIN_SCORE = 60  # 温度がこれ未満のチェーンは「条件そろい」にしない
 ENTRY_MAX = 3         # 「条件そろい」は温度の高い順に最大この件数まで
-# 注目トークン（各チェーンのDeFiトークン）
-TOKENS_PER_CHAIN = 5
-TOKEN_MIN_TVL = 5e6     # そのチェーン上のTVLがこれ未満のプロトコルは除外
-TOKEN_MIN_MCAP = 1e7    # 時価総額がこれ未満のトークンは除外
-TOKEN_SHARE = 0.5       # TVLの半分以上がそのチェーンにあるものだけ「そのチェーンのトークン」扱い
-# トークンの値動きとTVLが結びつきにくい種類は除外（ブリッジは預かり資産、ステーキングは元の通貨がTVL）
+# 取引できる銘柄（Hyperliquid の無期限先物 ＋ Ostium）
+OSTIUM_FALLBACK = ["BTC", "ETH", "SOL"]  # Ostium のAPIが取れなかったときに使う。扱っている銘柄を足してOK
+CAT_PATH = DOCS / "catcache.json"         # カテゴリの構成銘柄（CoinGecko）のキャッシュ
+CAT_MAX_AGE = 12 * 3600                   # セクターの構成銘柄は12時間ごとに取り直す
+ECO_MAX_AGE = 48 * 3600                   # チェーンのエコシステムの構成銘柄は48時間ごと
+CAT_BUDGET = 10                           # 1回の更新で構成銘柄を取りに行く最大回数（CoinGeckoの無料枠対策）
+# 注目トークン（各チェーンで取引できるもの）
+TOKENS_PER_CHAIN = 8
+TOKEN_MIN_TVL = 1e6     # そのチェーン上のTVLがこれ未満のプロトコルは除外
+TOKEN_SHARE = 0.3       # TVLの3割以上がそのチェーンにあれば「そのチェーンのトークン」扱い
+TOKEN_EXCLUDE = {"BTC", "ETH", "USDC", "USDT", "USDE", "DAI"}  # エコシステムに入っていても主要通貨・ステーブルは除く
 TOKEN_SKIP_CATS = {"CEX", "Chain", "Bridge", "Canonical Bridge", "Cross Chain Bridge", "Bridge Aggregators",
                    "Liquid Staking", "Liquid Restaking", "Restaking", "Restaked BTC", "Indexes", "Basis Trading"}
-TOKEN_WEIGHTS = {"tvl_7d": 0.4, "rel_7d": 0.35, "turnover": 0.25}
-TOKEN_PUMP = 40         # 対BTCで7日+40%以上は「急騰後」
+# 「<チェーン> Ecosystem」以外の名前のCoinGeckoカテゴリ
+CHAIN_ECO = {"BSC": "BNB Chain Ecosystem", "Hyperliquid L1": "Hyperliquid Ecosystem",
+             "OP Mainnet": "Optimism Ecosystem", "XRPL": "XRP Ledger Ecosystem",
+             "Near": "Near Protocol Ecosystem", "TON": "TON Ecosystem"}
+# セクターの作戦
+PLAN_UP = 4             # 資金が向かっているセクターを何個出すか
+PLAN_DOWN = 2           # 資金が抜けているセクターを何個出すか
+PLAN_COINS = 8          # 1セクターあたり表示する取引できる銘柄の数
+SECTOR_SKIP = ("stablecoin", "tokenized", "usd", "gold", "treasur", "money-market", "commodit", "fiat",
+               "made-in", "alleged", "portfolio", "launchpool", "launchpad", "hodler", "binance-alpha", "ido",
+               "yzi-labs", "exchange-based", "centralized-exchange", "wallets", "crypto-card", "neobank")
 
 
 # ---------- 共通 ----------
@@ -82,6 +96,19 @@ def get(url, headers=None, params=None, tries=3):
             last = e
             if getattr(e, "response", None) is not None and e.response.status_code in (403, 451):
                 break  # 地域ブロックはリトライしても無駄
+            time.sleep(2 * (i + 1))
+    raise last
+
+
+def post(url, body, tries=3):
+    last = None
+    for i in range(tries):
+        try:
+            r = requests.post(url, json=body, headers=UA, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except requests.RequestException as e:
+            last = e
             time.sleep(2 * (i + 1))
     raise last
 
@@ -395,83 +422,183 @@ def fetch_fng():
             "series": list(reversed(vals)), "text": fng_text(vals[0])}
 
 
-# ---------- 注目トークン ----------
-def token_label(t):
-    tvl7, rel7 = t.get("tvl_7d"), t.get("rel_7d")
-    if rel7 is not None and rel7 >= TOKEN_PUMP:
-        return "hot", "急騰後・飛び乗り注意"
-    if tvl7 is None or rel7 is None:
-        return "flat", "判定材料不足"
-    if tvl7 >= 3 and rel7 <= 0:
-        return "early", "資金流入・価格は出遅れ"
-    if tvl7 > 0 and rel7 > 0:
-        return "good", "資金も価格も上向き"
-    if tvl7 <= 0 and rel7 > 0:
-        return "weak", "価格だけ先行"
-    return "out", "弱い"
+# ---------- 取引できる銘柄 ----------
+def hl_symbol(name):
+    """Hyperliquid の kPEPE（1000枚単位）などを PEPE にそろえる"""
+    return name[1:] if name.startswith("k") and len(name) > 2 and name[1:].isupper() else name
 
 
-def rank_tokens(rows):
-    ranks = {k: pct_rank([r.get(k) for r in rows]) for k in TOKEN_WEIGHTS}
-    for i, r in enumerate(rows):
-        tot = w = 0.0
-        for k, wt in TOKEN_WEIGHTS.items():
-            if ranks[k][i] is not None:
-                tot += ranks[k][i] * wt
-                w += wt
-        r["score"] = round(tot / w * 100) if w else None
-        r["label"], r["label_text"] = token_label(r)
-    rows.sort(key=lambda r: -1 if r["score"] is None else r["score"], reverse=True)
-    return rows[:TOKENS_PER_CHAIN]
+def fetch_hyperliquid():
+    meta, ctxs = post("https://api.hyperliquid.xyz/info", {"type": "metaAndAssetCtxs"})
+    out = {}
+    for u, c in zip(meta["universe"], ctxs):
+        if u.get("isDelisted"):
+            continue
+        mark, prev = float(c.get("markPx") or 0), float(c.get("prevDayPx") or 0)
+        out[hl_symbol(u["name"]).upper()] = {
+            "hl": u["name"], "chg_24h": pct(mark, prev),
+            "fr8h": float(c.get("funding") or 0) * 8,  # HLは1時間ごとの資金調達率。他と比べやすいよう8時間換算
+            "vol": float(c.get("dayNtlVlm") or 0), "oi_usd": float(c.get("openInterest") or 0) * mark}
+    return out
 
 
-def fetch_tokens(chain_names, native=None):
-    """DefiLlamaのプロトコル一覧から各チェーンのトークンを拾い、CoinGeckoで価格を付ける"""
-    picked = {n: {} for n in chain_names}  # chain -> gecko_id -> 候補
-    # 「Aave V3」などの子プロトコルはトークンIDを親だけが持っていることがある
+def fetch_ostium():
+    d = get("https://metadata-backend.ostium.io/PricePublish/latest-prices")
+    return sorted({(x.get("from") or "").upper() for x in d if x.get("from")})
+
+
+def fetch_tradable():
+    """{シンボル: {venues:[...], chg_24h, fr8h, vol, oi_usd}}。値動きはHyperliquidのものを使う"""
+    out = {}
+    for sym, v in (safe(fetch_hyperliquid, {}) or {}).items():
+        out[sym] = {**v, "venues": ["HL"]}
+    ost = safe(fetch_ostium) or OSTIUM_FALLBACK
+    for sym in ost:
+        out.setdefault(sym, {"venues": []})["venues"].append("Ostium")
+    print(f"  tradable: HL {sum('HL' in v['venues'] for v in out.values())} / Ostium {len(ost)}")
+    return out
+
+
+def coin_row(sym, t, **extra):
+    return {"symbol": sym, "venues": t["venues"], "chg_24h": t.get("chg_24h"), "fr8h": t.get("fr8h"),
+            "vol": t.get("vol"), **extra}
+
+
+# ---------- カテゴリの構成銘柄（キャッシュ付き） ----------
+class CatCache:
+    def __init__(self, path, now_ts, budget):
+        self.path, self.now, self.budget = path, now_ts, budget
+        self.d = load(path, {})
+
+    def members(self, cid, max_age=CAT_MAX_AGE):
+        """{シンボル: 7日変化%}。古ければ取り直す（1回の更新で budget 回まで）"""
+        e = self.d.get(cid)
+        if e and self.now - e["ts"] < max_age:
+            return e["m"]
+        if self.budget <= 0:
+            return e["m"] if e else None
+        self.budget -= 1
+        rows = safe(lambda: cg("/coins/markets", {"vs_currency": "usd", "category": cid, "per_page": 150,
+                                                  "order": "market_cap_desc", "price_change_percentage": "7d"}))
+        time.sleep(1.5)
+        if rows is None:
+            return e["m"] if e else None
+        m = {}
+        for r in rows:
+            sym = (r.get("symbol") or "").upper()
+            if sym and sym not in m:  # 同じシンボルは時価総額の大きい方
+                m[sym] = r.get("price_change_percentage_7d_in_currency")
+        self.d[cid] = {"ts": self.now, "m": m}
+        return m
+
+    def save(self):
+        self.path.write_text(json.dumps(self.d, separators=(",", ":")))
+
+
+# ---------- セクターの作戦 ----------
+def median(xs):
+    xs = sorted(x for x in xs if x is not None)
+    return xs[len(xs) // 2] if xs else None
+
+
+def sector_phase(s, med7):
+    if s["rel_24h"] >= 10 or (med7 or 0) >= 40:
+        return "hot", "過熱", "新しく買うのは控えめに。持っているなら一部利確を検討。"
+    if s["streak_h"] >= 12 or (med7 or 0) >= 10:
+        return "cont", "継続", "流れは続いている。先頭の銘柄を追いかけるより、押し目か出遅れ銘柄を待つ。"
+    return "early", "初動", "強くなり始めたところ。出遅れ候補を小さく試し、セクターがBTCより弱くなったら撤退。"
+
+
+def build_plan(sectors, tradable, cache):
+    """強いセクター・弱いセクターごとに、HyperliquidかOstiumで取引できる銘柄を並べる"""
+    cands = [s for s in sectors if not any(k in s["id"] for k in SECTOR_SKIP)]
+    up, down = [], []
+    for side, pool, n in (("up", sorted(cands, key=lambda x: -x["rel_24h"]), PLAN_UP),
+                          ("down", sorted(cands, key=lambda x: x["rel_24h"]), PLAN_DOWN)):
+        out = up if side == "up" else down
+        for s in pool:
+            if len(out) >= n or (side == "up" and s["rel_24h"] <= 0) or (side == "down" and s["rel_24h"] >= 0):
+                break
+            m = cache.members(s["id"])
+            if not m:
+                continue
+            coins = [coin_row(sym, tradable[sym], px_7d=m[sym]) for sym in m if sym in tradable]
+            if len(coins) < 2:
+                continue
+            coins.sort(key=lambda c: -(c["vol"] or 0))  # 出来高の多い順（入りやすさ）
+            coins = coins[:PLAN_COINS]
+            med7 = median([c["px_7d"] for c in coins])
+            chgs = [c["chg_24h"] for c in coins if c["chg_24h"] is not None]
+            med24 = median(chgs)
+            if side == "up":
+                code, ph, act = sector_phase(s, med7)
+                lead = max(coins, key=lambda c: c["chg_24h"] if c["chg_24h"] is not None else -1e9)
+                for c in coins:
+                    if c is lead and (c["chg_24h"] or 0) > 0:
+                        c["tag"] = "先頭"
+                    elif (c["chg_24h"] is not None and med24 is not None and c["chg_24h"] < med24
+                          and c["chg_24h"] > -3 and (c["fr8h"] is None or c["fr8h"] < FR_CALM)):
+                        c["tag"] = "出遅れ候補"
+            else:
+                code, ph = "down", "資金流出"
+                act = "ロングは避ける。弱い銘柄はショート候補（ロングが資金調達料を払っている銘柄は特に）。"
+                # 下がっている銘柄のうち、ロングが資金調達料を払っている（FR>=0）ものを優先
+                weak = sorted([c for c in coins if (c["chg_24h"] or 0) < 0],
+                              key=lambda c: ((c["fr8h"] or 0) < 0, c["chg_24h"]))
+                for c in weak[:2]:
+                    c["tag"] = "ショート候補"
+            out.append({"id": s["id"], "name": s["name"], "rel_24h": s["rel_24h"], "rel_7d": s["rel_7d"],
+                        "streak_h": s["streak_h"], "med_7d": med7, "phase": code, "phase_text": ph,
+                        "action": act, "coins": coins})
+    print(f"  plan: up={len(up)} down={len(down)}")
+    return {"up": up, "down": down}
+
+
+# ---------- 注目トークン（各チェーンで取引できるもの） ----------
+def eco_category(chain, cats):
+    want = (CHAIN_ECO.get(chain) or f"{chain} Ecosystem").lower()
+    for c in cats:
+        if (c.get("name") or "").lower() == want:
+            return c["id"]
+    return None
+
+
+def fetch_tokens(chain_names, native, tradable, cache, cats):
+    """DefiLlamaでそのチェーンのDeFiトークンを、CoinGeckoのエコシステムでそれ以外も拾い、取引できるものだけ残す"""
+    picked = {n: {} for n in chain_names}
     parents = safe(lambda: get("https://api.llama.fi/lite/protocols2").get("parentProtocols"), []) or []
-    parent_gid = {x.get("id"): x.get("gecko_id") for x in parents if x.get("gecko_id")}
-    for p in get("https://api.llama.fi/protocols"):
-        gid = p.get("gecko_id") or parent_gid.get(p.get("parentProtocol"))
-        if not gid or p.get("category") in TOKEN_SKIP_CATS:
+    parent_sym = {x.get("id"): x.get("symbol") for x in parents}
+    for p in safe(lambda: get("https://api.llama.fi/protocols"), []) or []:
+        sym = (p.get("symbol") or "").upper()
+        if sym in ("", "-"):
+            sym = (parent_sym.get(p.get("parentProtocol")) or "").upper()
+        if sym not in tradable or p.get("category") in TOKEN_SKIP_CATS:
             continue
         total = p.get("tvl") or 0
         ct = p.get("chainTvls") or {}
         for n in chain_names:
             v = ct.get(n) or 0
             if v >= TOKEN_MIN_TVL and v >= total * TOKEN_SHARE:
-                cur = picked[n].get(gid)
-                if not cur or v > cur["tvl"]:  # V2/V3など同じトークンは大きい方を使う
-                    picked[n][gid] = {"id": gid, "name": p.get("name"), "cat": p.get("category"),
-                                      "tvl": v, "tvl_7d": p.get("change_7d")}
-    ids = sorted({g for d in picked.values() for g in d} | {"bitcoin"})
-    markets = {}
-    for i in range(0, len(ids), 100):
-        rows = cg("/coins/markets", {"vs_currency": "usd", "ids": ",".join(ids[i:i + 100]),
-                                     "per_page": 250, "price_change_percentage": "24h,7d"})
-        markets.update({m["id"]: m for m in rows})
-        time.sleep(1)
-    btc7 = (markets.get("bitcoin") or {}).get("price_change_percentage_7d_in_currency")
+                cur = picked[n].get(sym)
+                if not cur or v > cur["tvl"]:  # V2/V3など同じトークンは大きい方
+                    picked[n][sym] = {"name": p.get("name"), "cat": p.get("category"), "tvl": v,
+                                      "tvl_7d": p.get("change_7d")}
     out = {}
-    native = native or {}
-    for n, cands in picked.items():
-        rows = []
-        for gid, t in cands.items():
-            m = markets.get(gid)
-            if not m or (m.get("market_cap") or 0) < TOKEN_MIN_MCAP:
+    for n in chain_names:
+        rows = {sym: coin_row(sym, tradable[sym], **t) for sym, t in picked[n].items()}
+        cid = eco_category(n, cats)
+        m = cache.members(cid, ECO_MAX_AGE) if cid else None
+        for sym, px7 in (m or {}).items():
+            if sym in TOKEN_EXCLUDE:
                 continue
-            if (m.get("symbol") or "").upper() == (native.get(n) or ""):
-                continue  # チェーン自体の通貨はカード本体で見る
-            px7 = m.get("price_change_percentage_7d_in_currency")
-            if 0.95 <= (m.get("current_price") or 0) <= 1.05 and abs(px7 or 0) < 2:
-                continue  # ステーブルコインっぽいものは除外
-            t.update({"symbol": (m.get("symbol") or "").upper(), "mcap": m["market_cap"],
-                      "px_24h": m.get("price_change_percentage_24h_in_currency"), "px_7d": px7,
-                      "rel_7d": px7 - btc7 if (px7 is not None and btc7 is not None) else None,
-                      "turnover": (m.get("total_volume") or 0) / m["market_cap"] * 100})
-            rows.append(t)
+            if sym in tradable and sym not in rows:
+                rows[sym] = coin_row(sym, tradable[sym], name=None, cat="エコシステム", px_7d=px7)
+            elif sym in rows:
+                rows[sym]["px_7d"] = px7
+        rows.pop((native or {}).get(n) or "", None)  # チェーン自体の通貨はカード本体で見る
+        rows = sorted(rows.values(), key=lambda r: -(r["vol"] or 0))[:TOKENS_PER_CHAIN]
         if rows:
-            out[n] = rank_tokens(rows)
+            out[n] = rows
     print(f"  tokens: {sum(len(v) for v in out.values())} ({len(out)} chains)")
     return out
 
@@ -557,19 +684,20 @@ def build_sectors(m, hist, now_ts):
         cid = c["id"]
         rel24 = c["market_cap_change_24h"] - m["btc_24h"]
         c7 = pct(c["market_cap"], hist_value(hist, lambda s: s["cats"][cid][0], 7, now_ts))
-        streak = 0
-        if rel24 > 0:
-            streak = 1
+        streak_h, since = 0, None
+        if rel24 > 0:  # 何時間前からBTCを上回り続けているか（更新間隔がばらついても時間で数える）
+            since = now_ts
             for s in reversed(hist):
                 v = (s.get("cats", {}).get(cid) or [None, None])[1]
                 if v is None or v <= 0:
                     break
-                streak += 1
+                since = s["ts"]
+            streak_h = round((now_ts - since) / 3600)
         out.append({
             "id": cid, "name": c["name"], "mcap": c["market_cap"],
             "chg_24h": c["market_cap_change_24h"], "rel_24h": rel24,
             "rel_7d": (c7 - btc7) if (c7 is not None and btc7 is not None) else None,
-            "streak": streak, "top": (c.get("top_3_coins_id") or [])[:3],
+            "streak_h": streak_h, "top": (c.get("top_3_coins_id") or [])[:3],
         })
     out.sort(key=lambda x: x["rel_24h"], reverse=True)
     return out
@@ -627,17 +755,31 @@ def mock_all(now_ts):
                     if fv[-1] < lim)
     fng = {"value": fv[-1], "label": fv_label, "d1": fv[-1] - fv[-2], "d7": fv[-1] - fv[-8],
            "series": fv, "text": fng_text(fv[-1])}
-    cats = ["Dexs", "Lending", "Liquid Staking", "Derivatives", "Yield", "CDP"]
+    syms = ["BTC", "ETH", "SOL", "XRP", "DOGE", "WIF", "BONK", "PEPE", "POPCAT", "FARTCOIN", "JUP", "RAY", "PYTH",
+            "JTO", "RENDER", "TAO", "FET", "VIRTUAL", "AI16Z", "ONDO", "PENDLE", "AAVE", "UNI", "MORPHO", "AERO",
+            "ZRO", "STRK", "ZK", "OP", "ARB", "CETUS", "DEEP", "NAVX", "HYPE", "PURR", "LINK", "ENA", "ETHFI"]
+    tradable = {x: {"venues": ["HL"] + (["Ostium"] if x in ("BTC", "ETH", "SOL", "XRP", "LINK") else []),
+                    "chg_24h": random.uniform(-9, 14), "fr8h": random.choice([-0.0001, 0.00005, 0.0001, 0.0003, 0.0008]),
+                    "vol": random.uniform(2e6, 8e8)} for x in syms}
+    kinds = ["Dexs", "Lending", "Derivatives", "Yield", "エコシステム"]
     tokens = {}
     for c in chains:
-        rows = [{"id": f"tok-{c['name']}-{i}", "name": f"{c['name'].split()[0]} {cats[i % 6]} {i + 1}",
-                 "symbol": f"{c['name'][:2].upper()}T{i + 1}", "cat": cats[i % 6],
-                 "tvl": random.uniform(5e6, 3e9), "tvl_7d": random.uniform(-15, 25),
-                 "mcap": random.uniform(1e7, 5e9), "px_24h": random.uniform(-8, 12),
-                 "px_7d": random.uniform(-20, 45), "rel_7d": random.uniform(-20, 50),
-                 "turnover": random.uniform(1, 40)} for i in range(8)]
-        tokens[c["name"]] = rank_tokens(rows)
-    return hist, market, chains, ("Mock", derivs), prices, fng, tokens
+        tokens[c["name"]] = sorted([coin_row(x, tradable[x], name=None, cat=random.choice(kinds),
+                                             tvl_7d=random.uniform(-10, 20), px_7d=random.uniform(-20, 40))
+                                    for x in random.sample(syms[2:], 5)], key=lambda r: -r["vol"])
+    return hist, market, chains, ("Mock", derivs), prices, fng, tokens, tradable
+
+
+class MockCache:
+    def __init__(self, tradable):
+        self.syms = list(tradable)
+
+    def members(self, cid):
+        rnd = random.Random(cid)
+        return {x: rnd.uniform(-20, 45) for x in rnd.sample(self.syms, 7)}
+
+    def save(self):
+        pass
 
 
 # ---------- メイン ----------
@@ -645,7 +787,8 @@ def main():
     now_ts = int(time.time())
     warnings = []
     if MOCK:
-        hist, market, chains, (dsrc, derivs), prices, fng, tokens = mock_all(now_ts)
+        hist, market, chains, (dsrc, derivs), prices, fng, tokens, tradable = mock_all(now_ts)
+        cache = MockCache(tradable)
     else:
         hist = load(HIST_PATH, [])
         if not CG_KEY:
@@ -666,9 +809,11 @@ def main():
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
         print("恐怖・強欲指数...")
         fng = safe(fetch_fng)
-        print("注目トークン...")
-        tokens = safe(lambda: fetch_tokens([r["name"] for r in chains],
-                                           {r["name"]: r["symbol"] for r in chains if r["symbol"]}), {})
+        print("取引できる銘柄...")
+        tradable = fetch_tradable()
+        if not any("HL" in v["venues"] for v in tradable.values()):
+            warnings.append("Hyperliquidの銘柄一覧を取れませんでした。取引できる銘柄の表示が少なくなっています。")
+        cache = CatCache(CAT_PATH, now_ts, CAT_BUDGET)
 
     for r in chains:
         d = derivs.get(r["symbol"] or "", {})
@@ -678,7 +823,6 @@ def main():
     score_chains(chains)
     for r in chains:
         entry_check(r, fng)
-        r["tokens"] = tokens.get(r["name"], [])
     for i, r in enumerate([r for r in chains if r["entry"]]):  # chainsは温度の高い順
         r["entry"] = i < ENTRY_MAX
 
@@ -687,6 +831,16 @@ def main():
         r["score_series"] = [s.get("chains", {}).get(r["name"]) for s in hist[-47:]] + [r["score"]]
 
     sectors = build_sectors(market, hist, now_ts)
+    print("セクターの作戦...")
+    plan = safe(lambda: build_plan(sectors, tradable, cache), {"up": [], "down": []})
+    if not MOCK:  # 作戦の方が大事なので、CoinGeckoの呼び出し枠は作戦→チェーンのトークンの順に使う
+        print("取引できるトークン...")
+        tokens = safe(lambda: fetch_tokens([r["name"] for r in chains],
+                                           {r["name"]: r["symbol"] for r in chains if r["symbol"]},
+                                           tradable, cache, market["cats"]), {}) or {}
+    for r in chains:
+        r["tokens"] = tokens.get(r["name"], [])
+    cache.save()
     dom = market["btc_dom"]
     dom24 = hist_value(hist, lambda s: s["btc_dom"], 1, now_ts)
     dom7 = hist_value(hist, lambda s: s["btc_dom"], 7, now_ts)
@@ -708,6 +862,7 @@ def main():
         "fng": fng,
         "chains": chains,
         "sectors": sectors,
+        "plan": plan,
         "deriv_source": dsrc,
         "warnings": warnings,
     }
