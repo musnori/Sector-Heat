@@ -55,7 +55,11 @@ FNG_GREED = 75     # 恐怖・強欲指数がこれ以上ならエントリー�
 ENTRY_MIN_SCORE = 60  # 温度がこれ未満のチェーンは「条件そろい」にしない
 ENTRY_MAX = 3         # 「条件そろい」は温度の高い順に最大この件数まで
 # 取引できる銘柄（Hyperliquid の無期限先物 ＋ Ostium）
-OSTIUM_FALLBACK = ["BTC", "ETH", "SOL"]  # Ostium のAPIが取れなかったときに使う。扱っている銘柄を足してOK
+OSTIUM_FALLBACK = ["BTC", "ETH", "SOL"]  # Ostium のAPIが取れなかったときに使う
+# Ostium は株・指数・商品も扱っていて、SPX（S&P500）や META（Meta株）が同じ記号の仮想通貨と混ざるため、
+# 仮想通貨として扱うのはこのリストにあるものだけ。Ostium で取引できる仮想通貨が増えたら足してOK
+OSTIUM_CRYPTO = {"BTC", "ETH", "SOL", "XRP", "LINK", "HYPE", "BNB", "ADA", "TRX", "DOGE", "SUI", "AVAX",
+                 "LTC", "DOT", "TON", "NEAR", "BCH", "XLM"}
 CAT_PATH = DOCS / "catcache.json"         # カテゴリの構成銘柄（CoinGecko）のキャッシュ
 CAT_MAX_AGE = 12 * 3600                   # セクターの構成銘柄は12時間ごとに取り直す
 ECO_MAX_AGE = 48 * 3600                   # チェーンのエコシステムの構成銘柄は48時間ごと
@@ -65,6 +69,7 @@ TOKENS_PER_CHAIN = 8
 TOKEN_MIN_TVL = 1e6     # そのチェーン上のTVLがこれ未満のプロトコルは除外
 TOKEN_SHARE = 0.3       # TVLの3割以上がそのチェーンにあれば「そのチェーンのトークン」扱い
 TOKEN_EXCLUDE = {"BTC", "ETH", "USDC", "USDT", "USDE", "DAI"}  # エコシステムに入っていても主要通貨・ステーブルは除く
+ECO_MULTI = 3   # これ以上のチェーンのエコシステムに入っている銘柄はブリッジ版とみなし、Ethereum以外では出さない
 TOKEN_SKIP_CATS = {"CEX", "Chain", "Bridge", "Canonical Bridge", "Cross Chain Bridge", "Bridge Aggregators",
                    "Liquid Staking", "Liquid Restaking", "Restaking", "Restaked BTC", "Indexes", "Basis Trading"}
 # 「<チェーン> Ecosystem」以外の名前のCoinGeckoカテゴリ
@@ -452,7 +457,7 @@ def fetch_tradable():
     out = {}
     for sym, v in (safe(fetch_hyperliquid, {}) or {}).items():
         out[sym] = {**v, "venues": ["HL"]}
-    ost = safe(fetch_ostium) or OSTIUM_FALLBACK
+    ost = [x for x in (safe(fetch_ostium) or OSTIUM_FALLBACK) if x in OSTIUM_CRYPTO]
     for sym in ost:
         out.setdefault(sym, {"venues": []})["venues"].append("Ostium")
     print(f"  tradable: HL {sum('HL' in v['venues'] for v in out.values())} / Ostium {len(ost)}")
@@ -583,13 +588,23 @@ def fetch_tokens(chain_names, native, tradable, cache, cats):
                 if not cur or v > cur["tvl"]:  # V2/V3など同じトークンは大きい方
                     picked[n][sym] = {"name": p.get("name"), "cat": p.get("category"), "tvl": v,
                                       "tvl_7d": p.get("change_7d")}
+    eco = {}
+    for n in chain_names:
+        cid = eco_category(n, cats)
+        eco[n] = (cache.members(cid, ECO_MAX_AGE) if cid else None) or {}
+    # SOLやUNIのブリッジ版は色々なチェーンのエコシステムに入っているので、そのチェーンの銘柄とは言いにくい
+    seen = {}
+    for m in eco.values():
+        for sym in m:
+            seen[sym] = seen.get(sym, 0) + 1
+    natives = {x for x in (native or {}).values() if x}
     out = {}
     for n in chain_names:
         rows = {sym: coin_row(sym, tradable[sym], **t) for sym, t in picked[n].items()}
-        cid = eco_category(n, cats)
-        m = cache.members(cid, ECO_MAX_AGE) if cid else None
-        for sym, px7 in (m or {}).items():
-            if sym in TOKEN_EXCLUDE:
+        for sym, px7 in eco[n].items():
+            if sym in TOKEN_EXCLUDE or (sym in natives and sym != (native or {}).get(n)):
+                continue  # 他のチェーン自体の通貨（SuiエコシステムのSOLなど）
+            if seen.get(sym, 0) >= ECO_MULTI and n != "Ethereum" and sym not in rows:
                 continue
             if sym in tradable and sym not in rows:
                 rows[sym] = coin_row(sym, tradable[sym], name=None, cat="エコシステム", px_7d=px7)
