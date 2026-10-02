@@ -22,6 +22,7 @@ DOCS = ROOT / "docs"
 MOCK = "--mock" in sys.argv
 DATA_PATH = DOCS / ("data.mock.json" if MOCK else "data.json")
 HIST_PATH = DOCS / "history.json"
+META_PATH = ROOT / "cache" / "coin_meta.json"  # 上位銘柄がどのセクターに属するか（CoinGecko）のキャッシュ
 HIST_MAX = 24 * 30  # 30日分（1時間ごと）
 LONG_PATH = DOCS / ("longterm.mock.json" if MOCK else "longterm.json")
 LONG_START = 1483228800  # 2017-01-01。長期チャートの価格はここから
@@ -38,6 +39,7 @@ CHAINS = [
     ("Hyperliquid L1", "HYPE"), ("Aptos", "APT"), ("Polygon", "POL"),
     ("TON", "TON"), ("Bitcoin", "BTC"), ("XRPL", "XRP"), ("Stellar", "XLM"),
     ("Near", "NEAR"), ("Sei", "SEI"), ("OP Mainnet", "OP"),
+    ("Cardano", "ADA"), ("Hedera", "HBAR"),
 ]
 
 # スコアの重み（合計1でなくてもOK）
@@ -83,6 +85,36 @@ PLAN_COINS = 8          # 1セクターあたり表示する取引できる銘�
 SECTOR_SKIP = ("stablecoin", "tokenized", "usd", "gold", "treasur", "money-market", "commodit", "fiat",
                "made-in", "alleged", "portfolio", "launchpool", "launchpad", "hodler", "binance-alpha", "ido",
                "yzi-labs", "exchange-based", "centralized-exchange", "wallets", "crypto-card", "neobank")
+# いまの見立て（時価総額上位の銘柄ごとの状態）
+TOP_RANK = 30          # 監視するのは時価総額ランクこの順位まで（ステーブル・ラップ系は除く）
+META_REFRESH_DAYS = 7  # 銘柄のカテゴリ情報はめったに変わらないので週1で取り直す
+META_PER_RUN = 10      # 1回の実行で取り直す銘柄数の上限（CoinGeckoの無料枠を守る）
+# ステーブル・ラップ系など「買う対象」ではないもの
+NOT_TRADABLE_CAT = ["stablecoin", "wrapped", "bridged", "liquid staking token", "liquid staked",
+                    "tokenized gold", "tokenized commodit", "yield-bearing"]
+NOT_TRADABLE_SYM = {"USDT", "USDC", "DAI", "USDE", "FDUSD", "PYUSD", "USDS", "USD1", "TUSD", "USDD",
+                    "WBTC", "WETH", "STETH", "WSTETH", "WEETH", "CBBTC", "WBETH", "SUSDE", "BSC-USD",
+                    "XAUT", "PAXG", "BUIDL", "USDTB", "RLUSD", "USDF", "JITOSOL", "RETH", "LBTC"}
+# 銘柄の関連セクターとして見ないカテゴリ（資産運用会社のポートフォリオや、広すぎるもの）
+EXCLUDE_CAT = ["portfolio", "holdings", "index", "launchpool", "launchpad", "alleged",
+               "made in", "stablecoin", "wrapped", "bridged", "tokenized", "binance hodler",
+               "exchange-based", "yzi labs", "world liberty",
+               # 広すぎて「どこに資金が回っているか」が分からないカテゴリ
+               "layer 1 (l1)", "smart contract platform", "proof of work", "proof of stake",
+               "layer 0", "ethereum ecosystem", "coinbase", "gmci", "fan token"]
+LAG_MIN_SECTOR = 3.0   # 「出遅れ候補」にするのは、関連セクターがBTC比+3%以上動いているときだけ
+PICKS_MAX = 5          # 「いまの見立て」に出す銘柄数
+PHASES = {"early": "初動", "trend": "トレンド中", "hot": "過熱", "fade": "失速", "weak": "弱い", "flat": "横ばい"}
+PHASE_RANK = {"early": 0, "trend": 1, "hot": 2, "flat": 3, "fade": 4, "weak": 5}
+STATUS = {  # 上位銘柄ごとの「いまの状態」（表示名, 並び順）
+    "lag":   ("出遅れ候補", 0),
+    "early": ("初動", 1),
+    "trend": ("トレンド中", 2),
+    "hot":   ("過熱・追わない", 3),
+    "flat":  ("様子見", 4),
+    "fade":  ("失速", 5),
+    "weak":  ("弱い", 6),
+}
 
 
 # ---------- 共通 ----------
@@ -151,8 +183,26 @@ def value_days_ago(points, days, now_ts):
     return val
 
 
+def quiet(getter, s):
+    try:
+        return getter(s)
+    except (KeyError, IndexError, TypeError):
+        return None
+
+
 def hist_value(hist, getter, days, now_ts):
-    return value_days_ago([(s["ts"], safe(lambda s=s: getter(s))) for s in hist], days, now_ts)
+    return value_days_ago([(s["ts"], quiet(getter, s)) for s in hist], days, now_ts)
+
+
+def streak_hours(hist, getter, now_ts):
+    """何時間前からBTCを上回り続けているか（更新間隔がばらついても時間で数える）"""
+    since = now_ts
+    for s in reversed(hist):
+        v = quiet(getter, s)
+        if v is None or v <= 0:
+            break
+        since = s["ts"]
+    return round((now_ts - since) / 3600)
 
 
 # ---------- CoinGecko ----------
@@ -162,14 +212,33 @@ def cg(path, params=None):
 
 
 def fetch_market():
+    """1時間あたり3回: 全体、カテゴリ一覧、上位銘柄（BTC・ETHの価格もここから）"""
     g = cg("/global")["data"]
-    px = cg("/simple/price", {"ids": "bitcoin,ethereum", "vs_currencies": "usd",
-                              "include_24hr_change": "true"})
-    btc, eth = px["bitcoin"], px.get("ethereum") or {}
     cats = cg("/coins/categories")
-    return {"btc_dom": g["market_cap_percentage"]["btc"], "btc_price": btc["usd"],
-            "btc_24h": btc.get("usd_24h_change") or 0.0, "eth_price": eth.get("usd"),
-            "eth_24h": eth.get("usd_24h_change"), "cats": cats}
+    top = cg("/coins/markets", {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 60,
+                                "page": 1, "price_change_percentage": "24h,7d"})
+    btc = next(c for c in top if c["id"] == "bitcoin")
+    eth = next((c for c in top if c["id"] == "ethereum"), {})
+    return {"btc_dom": g["market_cap_percentage"]["btc"], "btc_price": btc["current_price"],
+            "btc_24h": btc.get("price_change_percentage_24h_in_currency") or 0.0,
+            "btc_7d": btc.get("price_change_percentage_7d_in_currency"),
+            "eth_price": eth.get("current_price"), "eth_24h": eth.get("price_change_percentage_24h_in_currency"),
+            "cats": cats, "top": top}
+
+
+def refresh_meta(top, meta, now_ts):
+    """銘柄ごとのカテゴリ（どのセクターに属するか）をキャッシュ。古いものだけ取り直す"""
+    stale = [c["id"] for c in top if (c.get("market_cap_rank") or 999) <= TOP_RANK + 10
+             and now_ts - meta.get(c["id"], {}).get("ts", 0) > META_REFRESH_DAYS * 86400]
+    for cid in stale[:META_PER_RUN]:
+        d = safe(lambda: cg(f"/coins/{cid}", {"localization": "false", "tickers": "false",
+                                              "market_data": "false", "community_data": "false",
+                                              "developer_data": "false"}))
+        if d:
+            meta[cid] = {"cats": [x for x in (d.get("categories") or []) if x], "ts": now_ts}
+            print(f"  meta: {cid} {len(meta[cid]['cats'])} categories")
+        time.sleep(2.5)
+    return meta
 
 
 # ---------- DefiLlama ----------
@@ -214,7 +283,21 @@ def fetch_chains():
     return rows
 
 
-# ---------- 先物（Binance → だめならOKX） ----------
+# ---------- 先物（Hyperliquid → 足りない分は Binance → OKX） ----------
+def oi_24h_ago(hist, sym, now_ts):
+    """Hyperliquidは今の建玉しか返さないので、毎時保存した値と比べる"""
+    return hist_value(hist, lambda x: x["oi"][sym], 1, now_ts)
+
+
+def derivs_from_hl(tradable, symbols, hist, now_ts):
+    out = {}
+    for s in symbols:
+        t = tradable.get(s) or {}
+        if t.get("oi_usd") is not None:
+            out[s] = {"funding": t["fr8h"], "oi": t["oi_usd"], "oi_24h": pct(t["oi_usd"], oi_24h_ago(hist, s, now_ts))}
+    return out
+
+
 def derivs_binance(symbols):
     prem = {p["symbol"]: p for p in get("https://fapi.binance.com/fapi/v1/premiumIndex")}
     out = {}
@@ -443,7 +526,8 @@ def fetch_hyperliquid():
         out[hl_symbol(u["name"]).upper()] = {
             "hl": u["name"], "chg_24h": pct(mark, prev),
             "fr8h": float(c.get("funding") or 0) * 8,  # HLは1時間ごとの資金調達率。他と比べやすいよう8時間換算
-            "vol": float(c.get("dayNtlVlm") or 0), "oi_usd": float(c.get("openInterest") or 0) * mark}
+            "vol": float(c.get("dayNtlVlm") or 0), "oi_usd": float(c.get("openInterest") or 0) * mark,
+            "max_lev": u.get("maxLeverage")}
     return out
 
 
@@ -457,11 +541,12 @@ def fetch_tradable():
     out = {}
     for sym, v in (safe(fetch_hyperliquid, {}) or {}).items():
         out[sym] = {**v, "venues": ["HL"]}
-    ost = [x for x in (safe(fetch_ostium) or OSTIUM_FALLBACK) if x in OSTIUM_CRYPTO]
+    live = safe(fetch_ostium)
+    ost = [x for x in (live or OSTIUM_FALLBACK) if x in OSTIUM_CRYPTO]
     for sym in ost:
         out.setdefault(sym, {"venues": []})["venues"].append("Ostium")
     print(f"  tradable: HL {sum('HL' in v['venues'] for v in out.values())} / Ostium {len(ost)}")
-    return out
+    return out, bool(live)
 
 
 def coin_row(sym, t, **extra):
@@ -699,15 +784,7 @@ def build_sectors(m, hist, now_ts):
         cid = c["id"]
         rel24 = c["market_cap_change_24h"] - m["btc_24h"]
         c7 = pct(c["market_cap"], hist_value(hist, lambda s: s["cats"][cid][0], 7, now_ts))
-        streak_h, since = 0, None
-        if rel24 > 0:  # 何時間前からBTCを上回り続けているか（更新間隔がばらついても時間で数える）
-            since = now_ts
-            for s in reversed(hist):
-                v = (s.get("cats", {}).get(cid) or [None, None])[1]
-                if v is None or v <= 0:
-                    break
-                since = s["ts"]
-            streak_h = round((now_ts - since) / 3600)
+        streak_h = streak_hours(hist, lambda s: s["cats"][cid][1], now_ts) if rel24 > 0 else 0
         out.append({
             "id": cid, "name": c["name"], "mcap": c["market_cap"],
             "chg_24h": c["market_cap_change_24h"], "rel_24h": rel24,
@@ -716,6 +793,109 @@ def build_sectors(m, hist, now_ts):
         })
     out.sort(key=lambda x: x["rel_24h"], reverse=True)
     return out
+
+
+# ---------- いまの見立て（上位銘柄とその関連セクター） ----------
+def trend_phase(r24, r7, streak_h, fr):
+    """BTC比の動きから局面を決める。セクターにも銘柄にも使う"""
+    if r24 >= 8 or (fr is not None and fr >= FR_HOT):
+        return "hot"
+    if r24 > 1.5 and streak_h <= 6 and (r7 is None or r7 < 5):
+        return "early"
+    if r24 > 0 and (streak_h > 6 or (r7 is not None and r7 >= 5)):
+        return "trend"
+    if r24 < 0 and r7 is not None and r7 > 2:
+        return "fade"
+    if r24 < -1.5:
+        return "weak"
+    return "flat"
+
+
+def is_tradable_coin(c, meta):
+    sym = (c.get("symbol") or "").upper()
+    if sym in NOT_TRADABLE_SYM or sym.startswith("USD"):
+        return False
+    cats = " | ".join(meta.get(c["id"], {}).get("cats", [])).lower()
+    return not any(k in cats for k in NOT_TRADABLE_CAT)
+
+
+def build_coins(m, meta, tradable, hist, now_ts):
+    coins = []
+    for c in m["top"]:
+        rank = c.get("market_cap_rank") or 999
+        if rank > TOP_RANK or c["id"] == "bitcoin" or not is_tradable_coin(c, meta):
+            continue
+        sym = c["symbol"].upper()
+        t = tradable.get(sym) or {"venues": []}
+        c24 = c.get("price_change_percentage_24h_in_currency")
+        c7 = c.get("price_change_percentage_7d_in_currency")
+        rel24 = (c24 - m["btc_24h"]) if c24 is not None else None
+        rel7 = (c7 - m["btc_7d"]) if (c7 is not None and m.get("btc_7d") is not None) else None
+        cid = c["id"]
+        streak_h = streak_hours(hist, lambda s: s["coins"][cid], now_ts) if (rel24 or 0) > 0 else 0
+        coins.append({
+            "id": cid, "sym": sym, "name": c.get("name"), "rank": rank,
+            "chg_24h": c24, "chg_7d": c7, "rel_24h": rel24, "rel_7d": rel7, "streak_h": streak_h,
+            "venues": t["venues"], "hl": t.get("hl"), "funding": t.get("fr8h"), "oi": t.get("oi_usd"),
+            "oi_24h": pct(t.get("oi_usd"), oi_24h_ago(hist, sym, now_ts)) if t.get("oi_usd") else None,
+            "max_lev": t.get("max_lev"), "cats": meta.get(cid, {}).get("cats", []),
+        })
+    return coins
+
+
+def coin_sectors(sectors, coins):
+    """上位銘柄が属するセクターごとに局面をつける（銘柄のFRの平均も見る）"""
+    names = {n for co in coins for n in co["cats"]}
+    out = {}
+    for s in sectors:
+        if s["name"] not in names or any(k in s["name"].lower() for k in EXCLUDE_CAT):
+            continue
+        frs = [co["funding"] for co in coins if s["name"] in co["cats"] and co["funding"] is not None]
+        ph = trend_phase(s["rel_24h"], s["rel_7d"], s["streak_h"], sum(frs) / len(frs) if frs else None)
+        out[s["name"]] = {"id": s["id"], "name": s["name"], "phase": ph, "phase_text": PHASES[ph],
+                          "rel_24h": s["rel_24h"]}
+    return out
+
+
+def judge_coins(coins, sectors):
+    """各上位銘柄に、関連セクターの局面と自分の動きから「いまの状態」と理由をつける"""
+    secs = coin_sectors(sectors, coins)
+    for co in coins:
+        rel = sorted([secs[n] for n in co["cats"] if n in secs], key=lambda s: (PHASE_RANK[s["phase"]], -s["rel_24h"]))
+        co["sectors"] = rel[:4]
+        r24 = co["rel_24h"] or 0
+        own = trend_phase(r24, co["rel_7d"], co["streak_h"], co["funding"])
+        best = rel[0] if rel else None
+        calm = co["funding"] is None or co["funding"] < FR_CALM
+        if own == "hot":
+            st = "hot"
+            why = ("FRが高く、ロングが混んでいます。" if (co["funding"] or 0) >= FR_HOT
+                   else f"24時間でBTCより{r24:+.1f}%と大きく上がっています。")
+        elif (best and best["phase"] in ("early", "trend") and best["rel_24h"] >= LAG_MIN_SECTOR
+              and r24 < best["rel_24h"] - 2 and calm):
+            st = "lag"
+            why = (f"{best['name']}が{best['phase_text']}（BTC比{best['rel_24h']:+.1f}%）なのに、"
+                   f"{co['sym']}はBTC比{r24:+.1f}%でまだ追いついていません。FRも低めです。")
+        elif own in ("early", "trend"):
+            st = own
+            if co["streak_h"] >= 2:
+                why = f"BTCより強い状態が{co['streak_h']}時間続いています。"
+            elif co["rel_7d"] is not None and co["rel_7d"] >= 5:
+                why = f"7日で見てもBTC比{co['rel_7d']:+.1f}%と強い流れです。"
+            else:
+                why = "今日になってBTCより強くなりました。"
+            if best:
+                why += f"関連: {best['name']}（{best['phase_text']}）。"
+        else:
+            st = own
+            why = {"fade": "7日では強かったのに、今日はBTCより弱くなっています。",
+                   "weak": "BTCより弱く、資金が来ていません。",
+                   "flat": "BTCとほぼ同じ動きです。"}.get(own, "")
+            if best and best["phase"] in ("early", "trend"):
+                why += f"ただし{best['name']}は{best['phase_text']}です。"
+        co["status"], co["status_text"], co["why"] = st, STATUS[st][0], why
+    coins.sort(key=lambda c: (STATUS[c["status"]][1], c["rank"]))
+    return [c["id"] for c in coins if c["status"] in ("lag", "early", "trend")][:PICKS_MAX]
 
 
 def phase_text(dom7):
@@ -729,6 +909,44 @@ def phase_text(dom7):
 
 
 # ---------- サンプルデータ ----------
+MOCK_COINS = [  # (id, sym, rank, categories)
+    ("ethereum", "ETH", 2, ["Smart Contract Platform", "Layer 1 (L1)", "Ethereum Ecosystem"]),
+    ("tether", "USDT", 3, ["Stablecoins"]),
+    ("ripple", "XRP", 4, ["Layer 1 (L1)", "XRP Ledger Ecosystem", "Payment Solutions"]),
+    ("binancecoin", "BNB", 5, ["Exchange-based Tokens", "BNB Chain Ecosystem", "Layer 1 (L1)"]),
+    ("solana", "SOL", 6, ["Solana Ecosystem", "Layer 1 (L1)", "Smart Contract Platform"]),
+    ("usd-coin", "USDC", 7, ["Stablecoins"]),
+    ("dogecoin", "DOGE", 8, ["Meme", "Proof of Work (PoW)"]),
+    ("tron", "TRX", 9, ["Tron Ecosystem", "Layer 1 (L1)"]),
+    ("cardano", "ADA", 10, ["Cardano Ecosystem", "Layer 1 (L1)", "Smart Contract Platform"]),
+    ("staked-ether", "STETH", 11, ["Liquid Staking Tokens"]),
+    ("hyperliquid", "HYPE", 12, ["Hyperliquid Ecosystem", "Decentralized Finance (DeFi)", "Perpetuals"]),
+    ("chainlink", "LINK", 13, ["Oracle", "Ethereum Ecosystem", "Real World Assets (RWA)"]),
+    ("stellar", "XLM", 14, ["Stellar Ecosystem", "Payment Solutions", "Layer 1 (L1)"]),
+    ("sui", "SUI", 15, ["Sui Ecosystem", "Layer 1 (L1)"]),
+    ("wrapped-bitcoin", "WBTC", 16, ["Wrapped-Tokens"]),
+    ("bitcoin-cash", "BCH", 17, ["Proof of Work (PoW)", "Payment Solutions"]),
+    ("avalanche-2", "AVAX", 18, ["Avalanche Ecosystem", "Layer 1 (L1)", "Real World Assets (RWA)"]),
+    ("hedera-hashgraph", "HBAR", 19, ["Hedera Ecosystem", "Layer 1 (L1)"]),
+    ("litecoin", "LTC", 20, ["Proof of Work (PoW)", "Payment Solutions"]),
+    ("the-open-network", "TON", 21, ["TON Ecosystem", "Layer 1 (L1)"]),
+    ("shiba-inu", "SHIB", 22, ["Meme", "Ethereum Ecosystem"]),
+    ("polkadot", "DOT", 23, ["Polkadot Ecosystem", "Layer 0 (L0)"]),
+    ("uniswap", "UNI", 24, ["Decentralized Exchange (DEX)", "Ethereum Ecosystem", "Decentralized Finance (DeFi)"]),
+    ("ethena-usde", "USDE", 25, ["Stablecoins"]),
+    ("aave", "AAVE", 26, ["Lending/Borrowing", "Decentralized Finance (DeFi)", "Ethereum Ecosystem"]),
+    ("pepe", "PEPE", 27, ["Meme", "Ethereum Ecosystem"]),
+    ("near", "NEAR", 28, ["Artificial Intelligence (AI)", "Layer 1 (L1)", "Near Protocol Ecosystem"]),
+    ("bittensor", "TAO", 29, ["Artificial Intelligence (AI)", "Layer 1 (L1)"]),
+    ("ondo-finance", "ONDO", 30, ["Real World Assets (RWA)", "Ethereum Ecosystem"]),
+]
+MOCK_COIN_CHG = {"ETH": 0.4, "XRP": 1.4, "BNB": 2.0, "SOL": 9.8, "DOGE": 5.4, "TRX": 0.9, "ADA": -0.6,
+                 "HYPE": 3.1, "LINK": 1.9, "XLM": 0.3, "SUI": 8.9, "BCH": 0.7, "AVAX": -1.0, "HBAR": -0.2,
+                 "LTC": 1.0, "TON": -1.8, "SHIB": 2.4, "DOT": -1.5, "UNI": 2.6, "AAVE": 4.9, "PEPE": 9.2,
+                 "NEAR": 5.0, "TAO": 16.0, "ONDO": 3.4}  # BTC比（BTCは+1.2%）
+MOCK_FR = {"TAO": 0.0008, "PEPE": 0.0006, "SOL": 0.00015, "DOGE": 0.00025, "AAVE": 0.00022}
+
+
 def mock_all(now_ts):
     random.seed(7)
     cats_def = [("solana-ecosystem", "Solana Ecosystem", 9e10), ("meme-token", "Meme", 6e10),
@@ -745,8 +963,19 @@ def mock_all(now_ts):
                      "btc_price": 112000 + math.sin(h / 9) * 1500,
                      "cats": {cid: [mc * (1 - h * 0.0008), random.uniform(-1, 3) if cid == "solana-ecosystem"
                                     else random.uniform(-2, 2)] for cid, _, mc in cats_def},
-                     "chains": {n: random.randint(20, 80) for n, _ in CHAINS[:10]}})
-    market = {"btc_dom": 57.1, "btc_price": 113400, "btc_24h": 1.2, "eth_price": 4120, "eth_24h": 2.3, "cats": [
+                     "chains": {n: random.randint(20, 80) for n, _ in CHAINS[:10]},
+                     "coins": {cid: (1.0 if sym in ("AAVE", "DOGE", "ONDO") and h <= 12 else -0.3)
+                               for cid, sym, _, _ in MOCK_COINS}})
+    top = [{"id": "bitcoin", "symbol": "btc", "name": "Bitcoin", "market_cap_rank": 1, "current_price": 113400,
+            "price_change_percentage_24h_in_currency": 1.2, "price_change_percentage_7d_in_currency": -0.8}]
+    for cid, sym, rank, _ in MOCK_COINS:
+        c24 = MOCK_COIN_CHG.get(sym, -1.2) + 1.2
+        top.append({"id": cid, "symbol": sym.lower(), "name": sym.title(), "market_cap_rank": rank,
+                    "price_change_percentage_24h_in_currency": c24,
+                    "price_change_percentage_7d_in_currency": c24 * 1.6 + random.uniform(-3, 3)})
+    meta = {cid: {"cats": cats, "ts": now_ts} for cid, _, _, cats in MOCK_COINS}
+    market = {"btc_dom": 57.1, "btc_price": 113400, "btc_24h": 1.2, "btc_7d": -0.8, "eth_price": 4120, "eth_24h": 2.3,
+              "top": top, "cats": [
         {"id": cid, "name": nm, "market_cap": mc, "market_cap_change_24h": random.uniform(-4, 9),
          "top_3_coins_id": ["coin-a", "coin-b", "coin-c"]} for cid, nm, mc in cats_def]}
     chains = [{"name": n, "symbol": s, "tvl": random.uniform(5e8, 6e10), "tvl_7d": random.uniform(-8, 12),
@@ -776,13 +1005,21 @@ def mock_all(now_ts):
     tradable = {x: {"venues": ["HL"] + (["Ostium"] if x in ("BTC", "ETH", "SOL", "XRP", "LINK") else []),
                     "chg_24h": random.uniform(-9, 14), "fr8h": random.choice([-0.0001, 0.00005, 0.0001, 0.0003, 0.0008]),
                     "vol": random.uniform(2e6, 8e8)} for x in syms}
+    for _, sym, _, _ in MOCK_COINS:
+        if sym in ("USDT", "USDC", "STETH", "WBTC", "USDE"):
+            continue
+        t = tradable.setdefault(sym, {"venues": ["HL"], "chg_24h": MOCK_COIN_CHG.get(sym, 0) + 1.2,
+                                      "vol": random.uniform(2e6, 8e8)})
+        t.update({"hl": ("k" + sym) if sym in ("PEPE", "SHIB") else sym, "oi_usd": random.uniform(5e7, 2e9),
+                  "fr8h": MOCK_FR.get(sym, random.choice([0.00004, 0.0001, 0.00012])),
+                  "max_lev": 25 if sym in ("ETH", "SOL", "XRP") else 10})
     kinds = ["Dexs", "Lending", "Derivatives", "Yield", "エコシステム"]
     tokens = {}
     for c in chains:
         tokens[c["name"]] = sorted([coin_row(x, tradable[x], name=None, cat=random.choice(kinds),
                                              tvl_7d=random.uniform(-10, 20), px_7d=random.uniform(-20, 40))
                                     for x in random.sample(syms[2:], 5)], key=lambda r: -r["vol"])
-    return hist, market, chains, ("Mock", derivs), prices, fng, tokens, tradable
+    return hist, market, chains, ("Mock", derivs), prices, fng, tokens, tradable, meta
 
 
 class MockCache:
@@ -802,32 +1039,48 @@ def main():
     now_ts = int(time.time())
     warnings = []
     if MOCK:
-        hist, market, chains, (dsrc, derivs), prices, fng, tokens, tradable = mock_all(now_ts)
+        hist, market, chains, (dsrc, derivs), prices, fng, tokens, tradable, meta = mock_all(now_ts)
         cache = MockCache(tradable)
     else:
         hist = load(HIST_PATH, [])
+        meta = load(META_PATH, {})
         if not CG_KEY:
             warnings.append("COINGECKO_API_KEY が未設定です。GitHubのSecretsに登録してください。")
         print("CoinGecko...")
         market = fetch_market()
+        meta = refresh_meta(market["top"], meta, now_ts)
+        missing = [c["id"] for c in market["top"] if (c.get("market_cap_rank") or 999) <= TOP_RANK
+                   and c["id"] not in meta]
+        if missing:
+            warnings.append(f"{len(missing)}銘柄のセクター情報がまだ取れていません（数時間で埋まります）。")
         print("DefiLlama...")
         chains = safe(fetch_chains, [])
         if not chains:
             warnings.append("DefiLlamaからチェーンのデータを取れませんでした。")
+        print("取引できる銘柄...")
+        tradable, ostium_live = fetch_tradable()
+        if not any("HL" in v["venues"] for v in tradable.values()):
+            warnings.append("Hyperliquidの銘柄一覧を取れませんでした。取引できる銘柄の表示が少なくなっています。")
+        if not ostium_live:
+            warnings.append("Ostiumの銘柄一覧を取れなかったので、主要銘柄の固定リストで代用しています。")
         print("先物...")
-        dsrc, derivs = fetch_derivs([r["symbol"] for r in chains if r["symbol"]])
+        syms = [r["symbol"] for r in chains if r["symbol"]]
+        derivs = derivs_from_hl(tradable, syms, hist, now_ts)
+        dsrc = "Hyperliquid" if derivs else None
+        rest = [s for s in syms if s not in derivs]
+        if rest:  # Hyperliquidに無い銘柄だけ Binance → OKX
+            src2, d2 = fetch_derivs(rest)
+            derivs.update(d2)
+            if d2:
+                dsrc = f"{dsrc} + {src2}" if dsrc else src2
         if not derivs:
-            warnings.append("取引所の先物データを取れませんでした（地域ブロックの可能性）。FRとOIなしで計算しています。")
+            warnings.append("先物データを取れませんでした。FRとOIなしで計算しています。")
         print("価格...")
         prices = fetch_prices([r["symbol"] for r in chains if r["symbol"]])
         if not prices:
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
         print("恐怖・強欲指数...")
         fng = safe(fetch_fng)
-        print("取引できる銘柄...")
-        tradable = fetch_tradable()
-        if not any("HL" in v["venues"] for v in tradable.values()):
-            warnings.append("Hyperliquidの銘柄一覧を取れませんでした。取引できる銘柄の表示が少なくなっています。")
         cache = CatCache(CAT_PATH, now_ts, CAT_BUDGET)
 
     for r in chains:
@@ -846,6 +1099,9 @@ def main():
         r["score_series"] = [s.get("chains", {}).get(r["name"]) for s in hist[-47:]] + [r["score"]]
 
     sectors = build_sectors(market, hist, now_ts)
+    print("いまの見立て...")
+    coins = build_coins(market, meta, tradable, hist, now_ts)
+    picks = judge_coins(coins, sectors)
     print("セクターの作戦...")
     plan = safe(lambda: build_plan(sectors, tradable, cache), {"up": [], "down": []})
     if not MOCK:  # 作戦の方が大事なので、CoinGeckoの呼び出し枠は作戦→チェーンのトークンの順に使う
@@ -863,18 +1119,30 @@ def main():
 
     snap = {"ts": now_ts, "btc_dom": dom, "btc_price": market["btc_price"],
             "cats": {s["id"]: [s["mcap"], round(s["rel_24h"], 2)] for s in sectors},
-            "chains": {r["name"]: r["score"] for r in chains}}
+            "chains": {r["name"]: r["score"] for r in chains},
+            "coins": {c["id"]: round(c["rel_24h"], 2) for c in coins if c["rel_24h"] is not None},
+            # Hyperliquidの建玉（24時間前との比較用。古いものは消す）
+            "oi": {k: round(v["oi_usd"]) for k, v in tradable.items()
+                   if v.get("oi_usd") and (k in derivs or any(c["sym"] == k for c in coins))}}
     hist = (hist + [snap])[-HIST_MAX:]
+    for s in hist:
+        if s["ts"] < now_ts - 26 * 3600:
+            s.pop("oi", None)
+    for c in coins:
+        c.pop("cats", None)
+        c.pop("oi", None)
 
     data = {
         "updated": datetime.fromtimestamp(now_ts, timezone.utc).isoformat(),
-        "mock": MOCK,
+        "mock": MOCK, "top_rank": TOP_RANK,
         "btc": {"dom": dom, "dom_24h": dom - dom24 if dom24 is not None else None,
                 "dom_7d": dom7_delta, "price": market["btc_price"], "chg_24h": market["btc_24h"],
                 "eth_price": market.get("eth_price"), "eth_24h": market.get("eth_24h"),
                 "phase": phase_text(dom7_delta)},
         "dom_series": [[s["ts"], round(s["btc_dom"], 3)] for s in hist[-24 * 7:]],
         "fng": fng,
+        "coins": coins,
+        "picks": picks,
         "chains": chains,
         "sectors": sectors,
         "plan": plan,
@@ -887,9 +1155,11 @@ def main():
         lt = mock_longterm(now_ts)
     else:
         HIST_PATH.write_text(json.dumps(hist, separators=(",", ":")))
+        META_PATH.parent.mkdir(exist_ok=True)
+        META_PATH.write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
         lt = update_longterm(load(LONG_PATH, {}), now_ts, dom, hist)
     LONG_PATH.write_text(json.dumps(lt, separators=(",", ":")))
-    print(f"done: {DATA_PATH.name} / chains={len(chains)} sectors={len(sectors)} deriv={dsrc}")
+    print(f"done: {DATA_PATH.name} / chains={len(chains)} sectors={len(sectors)} picks={picks} deriv={dsrc}")
 
 
 if __name__ == "__main__":
