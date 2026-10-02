@@ -72,7 +72,7 @@ CHAIN_ECO = {"BSC": "BNB Chain Ecosystem", "Hyperliquid L1": "Hyperliquid Ecosys
              "OP Mainnet": "Optimism Ecosystem", "XRPL": "XRP Ledger Ecosystem",
              "Near": "Near Protocol Ecosystem", "TON": "TON Ecosystem"}
 # いまの見立て（時価総額上位の銘柄ごとの状態）
-TOP_RANK = 20          # 監視するのは時価総額ランクこの順位まで（ステーブル・ラップ系は除く）
+TOP_RANK = 20          # 監視する銘柄数。HyperliquidかOstiumで取引できる銘柄を時価総額の上からこの数（BTC・ステーブル・ラップ系は除く）
 META_REFRESH_DAYS = 7  # 銘柄のカテゴリ情報はめったに変わらないので週1で取り直す
 META_PER_RUN = 10      # 1回の実行で取り直す銘柄数の上限（CoinGeckoの無料枠を守る）
 # ステーブル・ラップ系など「買う対象」ではないもの
@@ -214,7 +214,7 @@ def fetch_market():
 
 def refresh_meta(top, meta, now_ts):
     """銘柄ごとのカテゴリ（どのセクターに属するか）をキャッシュ。古いものだけ取り直す"""
-    stale = [c["id"] for c in top if (c.get("market_cap_rank") or 999) <= TOP_RANK + 10 and c["id"] != "bitcoin"
+    stale = [c["id"] for c in top if (c.get("market_cap_rank") or 999) <= TOP_RANK * 2 + 10 and c["id"] != "bitcoin"
              and now_ts - meta.get(c["id"], {}).get("ts", 0) > META_REFRESH_DAYS * 86400]
     for cid in stale[:META_PER_RUN]:
         d = safe(lambda: cg(f"/coins/{cid}", {"localization": "false", "tickers": "false",
@@ -358,10 +358,24 @@ def trend_stats(closes):
             "vs_ma7": pct(now, ma7), "vs_ma30": pct(now, ma30), "trend": trend}
 
 
-def fetch_prices(symbols):
+def closes_hl(name):
+    end = int(time.time() * 1000)
+    k = post("https://api.hyperliquid.xyz/info", {"type": "candleSnapshot", "req": {
+        "coin": name, "interval": "4h", "startTime": end - 31 * 86400 * 1000, "endTime": end}})
+    return [float(x["c"]) for x in k][-181:]  # 古い順
+
+
+def fetch_prices(symbols, tradable):
+    """4時間足の終値。Hyperliquidにある銘柄はそこから、無ければ Binance → OKX"""
     sources = [["Binance", closes_binance, 0], ["OKX", closes_okx, 0]]
     out = {}
     for s in symbols:
+        hl = (tradable.get(s) or {}).get("hl")
+        c = safe(lambda: closes_hl(hl)) if hl else None
+        if c and len(c) >= 42:
+            out[s] = trend_stats(c)
+            time.sleep(0.1)
+            continue
         for src in sources:
             name, fn, fails = src
             if fails >= 3:
@@ -619,12 +633,23 @@ def is_tradable_coin(c, meta):
     return not any(k in cats for k in NOT_TRADABLE_CAT)
 
 
+def select_top(m, meta, tradable):
+    """HyperliquidかOstiumで取引できる銘柄を、時価総額の上から TOP_RANK 個"""
+    out = []
+    for c in sorted(m["top"], key=lambda c: c.get("market_cap_rank") or 999):
+        sym = (c.get("symbol") or "").upper()
+        if c["id"] == "bitcoin" or not is_tradable_coin(c, meta) or not (tradable.get(sym) or {}).get("venues"):
+            continue
+        out.append(c)
+        if len(out) >= TOP_RANK:
+            break
+    return out
+
+
 def build_coins(m, meta, tradable, hist, now_ts):
     coins = []
-    for c in m["top"]:
+    for c in select_top(m, meta, tradable):
         rank = c.get("market_cap_rank") or 999
-        if rank > TOP_RANK or c["id"] == "bitcoin" or not is_tradable_coin(c, meta):
-            continue
         sym = c["symbol"].upper()
         t = tradable.get(sym) or {"venues": []}
         c24 = c.get("price_change_percentage_24h_in_currency")
@@ -699,10 +724,9 @@ def judge_coins(coins, sectors):
     return [c["id"] for c in coins if c["status"] in ("lag", "early", "trend")][:PICKS_MAX], secs
 
 
-def top_symbols(m, meta):
+def top_symbols(m, meta, tradable):
     """先にトレンド用の価格を取るため、監視する銘柄のシンボルだけ出す"""
-    return [c["symbol"].upper() for c in m["top"] if (c.get("market_cap_rank") or 999) <= TOP_RANK
-            and c["id"] != "bitcoin" and is_tradable_coin(c, meta)]
+    return [c["symbol"].upper() for c in select_top(m, meta, tradable)]
 
 
 def enrich_coins(coins, prices, chains, hist):
@@ -898,10 +922,6 @@ def main():
         print("CoinGecko...")
         market = fetch_market()
         meta = refresh_meta(market["top"], meta, now_ts)
-        missing = [c["id"] for c in market["top"] if (c.get("market_cap_rank") or 999) <= TOP_RANK
-                   and c["id"] not in meta and c["id"] != "bitcoin"]
-        if missing:
-            warnings.append(f"{len(missing)}銘柄のセクター情報がまだ取れていません（数時間で埋まります）。")
         print("DefiLlama...")
         chains = safe(fetch_chains, [])
         if not chains:
@@ -912,6 +932,9 @@ def main():
             warnings.append("Hyperliquidの銘柄一覧を取れませんでした。取引できる銘柄の表示が少なくなっています。")
         if not ostium_live:
             warnings.append("Ostiumの銘柄一覧を取れなかったので、主要銘柄の固定リストで代用しています。")
+        missing = [c["id"] for c in select_top(market, meta, tradable) if c["id"] not in meta]
+        if missing:
+            warnings.append(f"{len(missing)}銘柄のセクター情報がまだ取れていません（数時間で埋まります）。")
         print("先物...")
         syms = [r["symbol"] for r in chains if r["symbol"]]
         derivs = derivs_from_hl(tradable, syms, hist, now_ts)
@@ -925,8 +948,8 @@ def main():
         if not derivs:
             warnings.append("先物データを取れませんでした。FRとOIなしで計算しています。")
         print("価格...")
-        prices = fetch_prices(list(dict.fromkeys(top_symbols(market, meta)
-                                                 + [r["symbol"] for r in chains if r["symbol"]])))
+        prices = fetch_prices(list(dict.fromkeys(top_symbols(market, meta, tradable)
+                                                 + [r["symbol"] for r in chains if r["symbol"]])), tradable)
         if not prices:
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
         cache = CatCache(CAT_PATH, now_ts, CAT_BUDGET)
