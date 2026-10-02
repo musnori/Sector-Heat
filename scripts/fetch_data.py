@@ -86,7 +86,7 @@ SECTOR_SKIP = ("stablecoin", "tokenized", "usd", "gold", "treasur", "money-marke
                "made-in", "alleged", "portfolio", "launchpool", "launchpad", "hodler", "binance-alpha", "ido",
                "yzi-labs", "exchange-based", "centralized-exchange", "wallets", "crypto-card", "neobank")
 # いまの見立て（時価総額上位の銘柄ごとの状態）
-TOP_RANK = 30          # 監視するのは時価総額ランクこの順位まで（ステーブル・ラップ系は除く）
+TOP_RANK = 20          # 監視するのは時価総額ランクこの順位まで（ステーブル・ラップ系は除く）
 META_REFRESH_DAYS = 7  # 銘柄のカテゴリ情報はめったに変わらないので週1で取り直す
 META_PER_RUN = 10      # 1回の実行で取り直す銘柄数の上限（CoinGeckoの無料枠を守る）
 # ステーブル・ラップ系など「買う対象」ではないもの
@@ -104,6 +104,7 @@ EXCLUDE_CAT = ["portfolio", "holdings", "index", "launchpool", "launchpad", "all
                "layer 0", "ethereum ecosystem", "coinbase", "gmci", "fan token"]
 LAG_MIN_SECTOR = 3.0   # 「出遅れ候補」にするのは、関連セクターがBTC比+3%以上動いているときだけ
 PICKS_MAX = 5          # 「いまの見立て」に出す銘柄数
+COIN_ENTRY_MAX = 3     # 銘柄の「条件そろい」は並び順で最大この件数まで
 PHASES = {"early": "初動", "trend": "トレンド中", "hot": "過熱", "fade": "失速", "weak": "弱い", "flat": "横ばい"}
 PHASE_RANK = {"early": 0, "trend": 1, "hot": 2, "flat": 3, "fade": 4, "weak": 5}
 STATUS = {  # 上位銘柄ごとの「いまの状態」（表示名, 並び順）
@@ -835,6 +836,7 @@ def build_coins(m, meta, tradable, hist, now_ts):
         streak_h = streak_hours(hist, lambda s: s["coins"][cid], now_ts) if (rel24 or 0) > 0 else 0
         coins.append({
             "id": cid, "sym": sym, "name": c.get("name"), "rank": rank,
+            "price": c.get("current_price"), "mcap": c.get("market_cap"), "vol": c.get("total_volume"),
             "chg_24h": c24, "chg_7d": c7, "rel_24h": rel24, "rel_7d": rel7, "streak_h": streak_h,
             "venues": t["venues"], "hl": t.get("hl"), "funding": t.get("fr8h"), "oi": t.get("oi_usd"),
             "oi_24h": pct(t.get("oi_usd"), oi_24h_ago(hist, sym, now_ts)) if t.get("oi_usd") else None,
@@ -896,6 +898,33 @@ def judge_coins(coins, sectors):
         co["status"], co["status_text"], co["why"] = st, STATUS[st][0], why
     coins.sort(key=lambda c: (STATUS[c["status"]][1], c["rank"]))
     return [c["id"] for c in coins if c["status"] in ("lag", "early", "trend")][:PICKS_MAX]
+
+
+def top_symbols(m, meta):
+    """先にトレンド用の価格を取るため、監視する銘柄のシンボルだけ出す"""
+    return [c["symbol"].upper() for c in m["top"] if (c.get("market_cap_rank") or 999) <= TOP_RANK
+            and c["id"] != "bitcoin" and is_tradable_coin(c, meta)]
+
+
+def enrich_coins(coins, prices, chains, fng, hist):
+    """銘柄ごとに、価格トレンド・OIのズレ・チェーンの資金の指標・条件そろいをまとめる"""
+    chain_by_sym = {r["symbol"]: r for r in chains if r.get("symbol")}
+    for co in coins:
+        p = prices.get(co["sym"], {})
+        co.update({k: p.get(k) for k in ("vs_ma7", "vs_ma30", "trend")})
+        co["oi_real"] = oi_real(co["oi_24h"], co["chg_24h"])
+        co["div"], co["div_text"] = oi_div(co["chg_24h"], co["oi_real"])
+        ch = chain_by_sym.get(co["sym"])
+        co["chain"] = ({k: ch.get(k) for k in ("name", "score", "label", "label_text", "stable_7d", "dex_7d",
+                                                "tvl_7d", "tokens")} if ch else None)
+        co["px_series"] = [quiet(lambda s: s["cpx"][co["id"]], s) for s in hist[-47:]] + [co["price"]]
+        co["entry"] = (co["status"] in ("lag", "early", "trend") and co["trend"] == "up"
+                       and co["div"] not in ("warn", "weak") and (fng is None or fng["value"] < FNG_GREED))
+    n = 0
+    for co in coins:  # coinsは状態の良い順
+        if co["entry"]:
+            n += 1
+            co["entry"] = n <= COIN_ENTRY_MAX
 
 
 def phase_text(dom7):
@@ -965,12 +994,16 @@ def mock_all(now_ts):
                                     else random.uniform(-2, 2)] for cid, _, mc in cats_def},
                      "chains": {n: random.randint(20, 80) for n, _ in CHAINS[:10]},
                      "coins": {cid: (1.0 if sym in ("AAVE", "DOGE", "ONDO") and h <= 12 else -0.3)
-                               for cid, sym, _, _ in MOCK_COINS}})
+                               for cid, sym, _, _ in MOCK_COINS},
+                     "cpx": {cid: 100 * (1 + MOCK_COIN_CHG.get(sym, 0) / 100 * (48 - min(h, 48)) / 48
+                                         + math.sin(h / 4 + rank) * 0.01) for cid, sym, rank, _ in MOCK_COINS}})
     top = [{"id": "bitcoin", "symbol": "btc", "name": "Bitcoin", "market_cap_rank": 1, "current_price": 113400,
             "price_change_percentage_24h_in_currency": 1.2, "price_change_percentage_7d_in_currency": -0.8}]
     for cid, sym, rank, _ in MOCK_COINS:
         c24 = MOCK_COIN_CHG.get(sym, -1.2) + 1.2
         top.append({"id": cid, "symbol": sym.lower(), "name": sym.title(), "market_cap_rank": rank,
+                    "current_price": 100 * (1 + MOCK_COIN_CHG.get(sym, 0) / 100), "market_cap": 4e11 / rank,
+                    "total_volume": 2e10 / rank,
                     "price_change_percentage_24h_in_currency": c24,
                     "price_change_percentage_7d_in_currency": c24 * 1.6 + random.uniform(-3, 3)})
     meta = {cid: {"cats": cats, "ts": now_ts} for cid, _, _, cats in MOCK_COINS}
@@ -985,9 +1018,7 @@ def mock_all(now_ts):
                   "oi": random.uniform(1e8, 2e10), "oi_24h": random.uniform(-10, 30)}
               for _, s in CHAINS if s}
     prices = {}
-    for _, s in CHAINS:
-        if not s:
-            continue
+    for s in dict.fromkeys([x for _, x in CHAINS if x] + [x for _, x, _, _ in MOCK_COINS]):
         drift = random.uniform(-0.004, 0.005)
         c, v = [], 100.0
         for _ in range(181):
@@ -1019,6 +1050,8 @@ def mock_all(now_ts):
         tokens[c["name"]] = sorted([coin_row(x, tradable[x], name=None, cat=random.choice(kinds),
                                              tvl_7d=random.uniform(-10, 20), px_7d=random.uniform(-20, 40))
                                     for x in random.sample(syms[2:], 5)], key=lambda r: -r["vol"])
+    for snap in hist[-26:]:  # 建玉の24時間変化を出すため、Hyperliquidの建玉の履歴も作る
+        snap["oi"] = {k: v["oi_usd"] / random.Random(k).uniform(0.85, 1.25) for k, v in tradable.items() if v.get("oi_usd")}
     return hist, market, chains, ("Mock", derivs), prices, fng, tokens, tradable, meta
 
 
@@ -1076,7 +1109,8 @@ def main():
         if not derivs:
             warnings.append("先物データを取れませんでした。FRとOIなしで計算しています。")
         print("価格...")
-        prices = fetch_prices([r["symbol"] for r in chains if r["symbol"]])
+        prices = fetch_prices(list(dict.fromkeys(top_symbols(market, meta)
+                                                 + [r["symbol"] for r in chains if r["symbol"]])))
         if not prices:
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
         print("恐怖・強欲指数...")
@@ -1112,6 +1146,7 @@ def main():
     for r in chains:
         r["tokens"] = tokens.get(r["name"], [])
     cache.save()
+    enrich_coins(coins, prices, chains, fng, hist)
     dom = market["btc_dom"]
     dom24 = hist_value(hist, lambda s: s["btc_dom"], 1, now_ts)
     dom7 = hist_value(hist, lambda s: s["btc_dom"], 7, now_ts)
@@ -1121,6 +1156,7 @@ def main():
             "cats": {s["id"]: [s["mcap"], round(s["rel_24h"], 2)] for s in sectors},
             "chains": {r["name"]: r["score"] for r in chains},
             "coins": {c["id"]: round(c["rel_24h"], 2) for c in coins if c["rel_24h"] is not None},
+            "cpx": {c["id"]: c["price"] for c in coins if c["price"]},
             # Hyperliquidの建玉（24時間前との比較用。古いものは消す）
             "oi": {k: round(v["oi_usd"]) for k, v in tradable.items()
                    if v.get("oi_usd") and (k in derivs or any(c["sym"] == k for c in coins))}}
