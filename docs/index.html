@@ -211,7 +211,7 @@ function dbar(v, max){
 }
 function spark(vals){
   const pts = (vals||[]).map((v,i)=>[i,v]).filter(p=>p[1]!=null);
-  if(pts.length<2) return '<span class="mut" style="font-size:12px">記録中</span>';
+  if(pts.length<6) return '<span class="mut" style="font-size:12px">記録中</span>';  // 点が少ないと縦棒に見えるので6時間分たまるまで出さない
   const W=76, H=26, ys=pts.map(p=>p[1]), lo=Math.min(...ys), hi=Math.max(...ys), sp=(hi-lo)||1, n=vals.length-1||1;
   const X = i => 2+i/n*(W-6), Y = v => H-3-(v-lo)/sp*(H-6);
   const d = pts.map(([i,v],k)=>`${k?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
