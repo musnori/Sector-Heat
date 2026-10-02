@@ -33,26 +33,6 @@ header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
 h1{font-size:clamp(28px,6vw,40px);font-weight:700;margin:0;letter-spacing:.04em}
 .updated{color:var(--muted);font-size:13px}
 
-.dom{margin:22px 0 34px;display:grid;grid-template-columns:auto 1fr;gap:4px 20px;align-items:end}
-.dom .big{font-size:72px;line-height:.9;font-weight:600}
-.dom .big small{font-size:30px}
-.dom .cap{font-size:13px;color:var(--muted)}
-.dom svg{width:100%;height:64px;display:block}
-.dom p{grid-column:1/-1;margin:10px 0 0;font-size:15px}
-.delta{font-size:14px;margin-left:6px}
-.up{color:var(--hot)} .down{color:var(--cold)}
-
-.mood{margin:-14px 0 30px;display:grid;grid-template-columns:auto 1fr;gap:4px 20px;align-items:end}
-.mood .big{font-size:52px;line-height:.9;font-weight:600}
-.mood .lbl{font-size:16px;font-weight:700;margin-left:8px}
-.mood .cap{font-size:13px;color:var(--muted)}
-.mood .gauge{position:relative;height:8px;border-radius:4px;margin:10px 0 6px;
-  background:linear-gradient(90deg,var(--cold),var(--mild) 50%,var(--hot))}
-.mood .gauge i{position:absolute;top:-4px;width:4px;height:16px;border-radius:2px;background:var(--ink);transform:translateX(-50%)}
-.mood svg{width:100%;height:40px;display:block}
-.mood p{grid-column:1/-1;margin:8px 0 0;font-size:15px}
-@media (max-width:560px){.mood{grid-template-columns:1fr}}
-
 .picks{background:var(--surface);border-left:3px solid var(--good);padding:10px 14px;margin:0 0 14px;font-size:14px}
 .picks b{color:var(--good)}
 
@@ -74,88 +54,28 @@ details.toks{position:relative;margin:8px 0 0 62px;padding:8px 12px}
 .toks p{margin:6px 0 0;font-size:11px;color:var(--muted)}
 @media (max-width:560px){
   .toks .hide-sm{display:none}.toks td,.toks th{padding-left:4px;padding-right:4px}
-  .toks td:first-child span.sub{max-width:8em}
-  .dom{grid-template-columns:1fr}.dom .big{font-size:60px}}
+  .toks td:first-child span.sub{max-width:8em}}
 
-.plan{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:10px}
-.plan h3{grid-column:1/-1;font-size:15px;margin:10px 0 -2px}
-.pc{background:var(--surface);border-radius:8px;padding:12px 14px;border-top:3px solid var(--rule)}
-.pc-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}
-.pc-h b{font-size:16px}
-.pc-h .num{margin-left:auto;font-size:20px;font-weight:600}
-.pc-m{font-size:12px;color:var(--muted);margin-top:2px}
-.pc-a{font-size:13px;margin:8px 0 6px;font-weight:500}
-.pc table{width:100%;border-collapse:collapse;font-size:13px}
-.pc td{padding:4px 4px;border-top:1px solid var(--rule);white-space:nowrap;text-align:right}
-.pc td:first-child{text-align:left;padding-left:0}
-.pc td:first-child b{font-family:var(--num);font-size:15px;margin-right:4px}
-.pc .num{font-weight:600}
-.pc .tg{font-size:11px;font-weight:700;text-align:left;padding-left:8px}
 .ven{display:inline-block;font-size:10px;font-weight:700;padding:0 5px;border-radius:3px;border:1px solid var(--rule);color:var(--muted);margin-right:3px;vertical-align:1px}
-details.allsec{margin-top:14px;background:none;padding:0}
-details.allsec summary{font-size:14px;margin-bottom:8px}
-@media (max-width:560px){.plan{grid-template-columns:1fr}}
-.sectors{display:grid;gap:0}
-.sec{display:grid;grid-template-columns:minmax(0,1fr) 42% 84px;gap:10px;align-items:center;
-  padding:9px 0;border-top:1px solid var(--rule);font-size:14px}
-.sec .nm{overflow:hidden}
-.sec .nm div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.sec .nm span{color:var(--muted);font-size:12px}
 .bar{position:relative;height:14px}
 .bar::before{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:1px;background:var(--rule)}
 .bar i{position:absolute;top:0;bottom:0;border-radius:2px}
-.sec .v{text-align:right;font-size:17px;font-weight:600}
-.sec .v small{display:block;font-family:var(--text);font-size:11px;font-weight:400;color:var(--muted)}
-@media (max-width:560px){.sec{grid-template-columns:minmax(0,1fr) 84px;row-gap:4px}.sec .nm{grid-column:1/-1}
-  .sec .nm div,.sec .nm span{display:inline;margin-right:8px}}
-.more{margin-top:10px;background:none;border:1px solid var(--rule);color:var(--ink);font:inherit;font-size:14px;
-  padding:6px 14px;border-radius:6px;cursor:pointer}
-
-.ranges{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
-.ranges button{background:none;border:1px solid var(--rule);color:var(--ink);font:inherit;font-size:13px;
-  padding:4px 12px;border-radius:999px;cursor:pointer}
-.ranges button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.ranges .sep{flex:1}
-.lc{position:relative;touch-action:pan-y;user-select:none}
-.lc-c{margin-bottom:10px}
-.lc-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-size:14px}
-.lc-h b{font-weight:700}
-.lc-h .num{font-size:18px;font-weight:600}
-.lc-h small{color:var(--muted);font-size:12px}
-.lc svg{display:block;width:100%;overflow:visible}
-.lc svg text{font-family:var(--num);font-size:12px;fill:var(--muted)}
-.lc .note{font-size:12px;color:var(--muted);margin:2px 0 0}
-.lc-tip{position:absolute;top:0;pointer-events:none;background:var(--surface);border:1px solid var(--rule);
-  border-radius:6px;padding:6px 10px;font-size:12px;line-height:1.5;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;z-index:2}
-.lc-tip b{font-family:var(--num);font-size:14px;font-weight:600;margin-left:6px}
-.lc-tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:1px}
-.go-long{font-size:13px;color:var(--muted);margin-left:8px}
-/* 上位銘柄のカード */
-.coin{background:var(--surface);border-radius:10px;padding:14px 16px 12px;border-left:4px solid var(--pc);margin-top:12px}
-.coin .hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.coin h3{margin:0;font-size:19px;font-weight:700;flex:1;min-width:0}
-.coin h3 .rk{font-size:12px;font-weight:400;color:var(--muted);margin-left:8px}
-.coin h3 a{text-decoration:none;border-bottom:1px dotted var(--muted)}
-.coin .rel{font-size:26px;font-weight:600}
-.coin .entry{font-size:13px;font-weight:700;padding:2px 10px;border-radius:999px;background:var(--good);color:#fff;white-space:nowrap}
-.st{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--bg);background:var(--pc);white-space:nowrap}
-.coin .act{margin:6px 0 4px;font-size:14px}
-.cst,.cch{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 16px;font-size:13px;color:var(--muted)}
-.cst b,.cch b{font-family:var(--num);font-weight:600;font-size:15px;color:var(--ink);margin-left:4px}
-.cst b.hotfr{color:var(--hot)}
-.cst .spark{margin-left:auto;align-self:center;width:84px;height:22px;opacity:.85}
-.cst .spark svg{display:block;width:84px;height:22px}
-.coin .sig{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:6px 0 0;font-size:13px}
-.coin .sig .px{color:var(--muted)}
-.coin .sig .px b{font-family:var(--num);font-weight:600;font-size:15px;color:var(--ink);margin-left:4px}
-.cch{margin-top:8px;padding-top:8px;border-top:1px dashed var(--rule)}
-.cch .cs{font-family:var(--num);font-size:24px;font-weight:600;line-height:1}
-.schips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
-.schip{font-size:12px;border:1px solid var(--rule);border-radius:6px;padding:2px 8px;background:var(--bg)}
-.schip b{color:var(--pc);margin-left:6px;font-weight:700}
-.coin details.toks{margin:8px 0 0;padding:8px 0 0;background:none}
-@media (max-width:560px){.cst .spark{display:none}.coin .rel{font-size:22px}
-  .coin h3{flex:1 1 55%}.coin h3 .rk{display:block;margin-left:0}.coin .entry{order:5}}
+.flow{background:var(--surface);border-radius:10px;padding:14px 16px;margin-top:18px}
+.flow .ftxt{margin:0 0 10px;font-size:15px;font-weight:500}
+.fsec{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;font-size:13px}
+.fsec h3{font-size:13px;margin:0 0 4px;color:var(--muted);font-weight:700}
+.fsec ul{list-style:none;margin:0;padding:0}
+.fsec li{display:flex;align-items:baseline;gap:6px;padding:3px 0;border-top:1px solid var(--rule)}
+.fsec li span{flex:1;min-width:0}
+.fsec li b{font-weight:700}
+.fsec li small{color:var(--muted);margin-left:6px}
+.fsec li .num{flex:none;font-weight:600;font-size:14px}
+.fbars{margin-top:14px}
+.fb{display:grid;grid-template-columns:4em minmax(0,1fr) 4.2em 5em;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--rule);font-size:14px}
+.fb b{font-weight:700}
+.fb .v{text-align:right;font-size:16px;font-weight:600}
+.fb small{text-align:right;font-size:11px;color:var(--muted);white-space:nowrap}
+@media (max-width:560px){.fsec{grid-template-columns:1fr}.fb{grid-template-columns:3.6em minmax(0,1fr) 4em 4.6em;gap:6px}}
 .warn{background:var(--surface);border-left:3px solid var(--warm);padding:10px 14px;margin-top:18px;font-size:14px}
 details{margin-top:40px;background:var(--surface);padding:14px 16px;border-radius:8px;font-size:14px}
 summary{cursor:pointer;font-weight:700}
@@ -174,6 +94,8 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
   <details>
     <summary>見方</summary>
     <dl>
+      <dt>今の資金の流れ</dt>
+      <dd>上位銘柄の24時間のBTC比を並べ、BTC比+1%以上の銘柄を「強い」、-1%以下を「抜けている」としています。セクターは、上位銘柄が属するカテゴリ（CoinGecko）のうち、初動・トレンド中・過熱で対BTCがプラスのものを「向かっている」、失速・弱いでマイナスのものを「抜けている」として並べています。棒の下の金額は、24時間の時価総額の増減です。建玉が価格の影響を除いて+5%以上増えながら上がっている銘柄は「新しい買いを伴っている」と書きます。</dd>
       <dt>上位銘柄のカード</dt>
       <dd>時価総額20位まで（BTC・ステーブル・ラップ系を除く）の銘柄ごとに、BTC比の値動き、出来高、資金調達率(FR)、建玉(OI)の24時間変化、価格トレンド、OIと価格のズレ、関連セクターの局面を並べています。右の小さな線は48時間の価格の動きです。ETH・SOL・BNBのようにチェーンの通貨であれば、そのチェーンの温度と資金の流れ（ステーブルコイン・DEX出来高・TVLの7日変化）も出します。</dd>
       <dt>チェーンの温度（0〜100）</dt>
@@ -182,14 +104,12 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
       <dd>資金の指標のうち2つ以上がプラスで、FRがまだ0.02%未満。レバレッジが軽いまま実需のお金が入っている状態です。</dd>
       <dt>過熱気味</dt>
       <dd>FRが0.05%以上、またはOIが24時間で+25%以上。ロングが混んでいて、清算で急落しやすい状態です。</dd>
-      <dt>恐怖・強欲指数</dt>
-      <dd>相場全体の雰囲気を0〜100で表した値です（alternative.me）。25以下は恐怖が強く、75以上は強欲が強い状態です。75以上のときは「条件そろい」を出しません。</dd>
       <dt>トレンド</dt>
       <dd>4時間足の終値で、今の価格が7日平均・30日平均より上にあるかを見ています。価格 ＞ 7日平均 ＞ 30日平均なら上昇トレンド、逆なら下落トレンドです。</dd>
       <dt>OIと価格のズレ</dt>
       <dd>OIはドル建てなので、価格の上げ下げの影響を除いてから比べています。価格が上がってOIも増えていれば新しい買いが入っている、価格が動かないのにOIだけ急増していれば清算で急に動きやすい、という見方です。</dd>
       <dt>条件そろい</dt>
-      <dd>状態が「出遅れ候補・初動・トレンド中」で、「上昇トレンド」＋「OIに危ないズレがない（急増・買い戻し主導でない）」＋「恐怖・強欲指数が75未満」を満たした銘柄のうち、上から最大3つです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
+      <dd>状態が「出遅れ候補・初動・トレンド中」で、「上昇トレンド」＋「OIに危ないズレがない（急増・買い戻し主導でない）」を満たした銘柄のうち、上から最大3つです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
       <dt>銘柄の状態</dt>
       <dd>上位銘柄に、関連セクターの局面と銘柄自身の動きから状態をつけています。出遅れ候補: 関連セクターが初動かトレンド中でBTC比+3%以上動いているのに、その銘柄はまだ2%以上遅れていて、FRも低い。過熱・追わない: 24時間でBTC比+8%以上か、FRが0.05%以上。それ以外は銘柄自身の動きで初動・トレンド中・様子見・失速・弱いに分けます。カードはこの順（出遅れ候補→初動→トレンド中→過熱→様子見→失速→弱い）に並びます。</dd>
       <dt>銘柄の関連セクターの局面</dt>
@@ -198,13 +118,9 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
       <dd>Hyperliquidは1時間ごとの資金調達なので、他の取引所と比べやすいよう8時間分に換算して表示しています。</dd>
       <dt>取引できるトークン</dt>
       <dd>そのチェーンのDeFiトークン（DefiLlama）とエコシステムの銘柄（CoinGecko）のうち、Hyperliquid（HL）かOstium（Ost）で取引できるものを出来高の多い順に最大8つ並べています（チェーンの通貨のカードの中にあります）。値動きと資金調達率はHyperliquidの値です。</dd>
-      <dt>セクターの作戦</dt>
-      <dd>対BTCで強いセクター上位4つと弱いセクター2つを選び、取引できる銘柄を並べています。「初動」は強くなり始め、「継続」は12時間以上BTC超えか銘柄の7日中央値が+10%以上、「過熱」は対BTC 24hで+10%以上か7日中央値+40%以上です。「先頭」はそのセクターで一番上がっている銘柄、「出遅れ候補」はセクターの中央値より上がっておらず資金調達率も低い銘柄、「ショート候補」は弱いセクターの中でも特に下がっている銘柄です。</dd>
-      <dt>セクターの対BTC</dt>
-      <dd>CoinGeckoのカテゴリ時価総額の変化から、BTCの変化を引いた値です。連続時間は、BTCを上回り続けている時間です。</dd>
     </dl>
   </details>
-  <footer>データ: CoinGecko, DefiLlama, alternative.me, 取引所の公開API。投資判断はご自身で。</footer>
+  <footer>データ: CoinGecko, DefiLlama, Hyperliquid, 取引所の公開API。投資判断はご自身で。</footer>
 </main>
 <script>
 const $ = s => document.querySelector(s);
@@ -214,12 +130,8 @@ const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;',
 const sp = v => v==null ? '—' : (v>0?'+':'') + v.toFixed(Math.abs(v)<10?1:0) + '%';
 const TREND = {up:['上昇トレンド','var(--good)'], down:['下落トレンド','var(--cold)'], range:['もみ合い','var(--out)']};
 const DIV = {good:'var(--good)', weak:'var(--warm)', warn:'var(--hot)', flat:'var(--muted)'};
-const fngColor = v => v<=25 ? 'var(--cold)' : v<46 ? 'var(--mild)' : v<55 ? 'var(--muted)' : v<75 ? 'var(--warm)' : 'var(--hot)';
-const PH = {early:'var(--good)', cont:'var(--warm)', hot:'var(--hot)', down:'var(--cold)'};
-const TAGC = {'先頭':'var(--warm)', '出遅れ候補':'var(--good)', 'ショート候補':'var(--cold)'};
 const ven = vs => (vs||[]).map(v=>`<span class="ven">${v==='HL'?'HL':'Ost'}</span>`).join('');
 const vol = v => v==null ? '—' : v>=1e9 ? '$'+(v/1e9).toFixed(1)+'B' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+'M' : '$'+(v/1e3).toFixed(0)+'k';
-const pt = v => v==null ? '' : (v>0?'+':'') + v;
 const fr = v => v==null ? '—' : (v*100).toFixed(3) + '%';
 const SPC = {early:'var(--warm)', trend:'var(--good)', hot:'var(--hot)', fade:'var(--cold)', weak:'var(--cold)', flat:'var(--out)'};
 const ST_PC = {lag:'var(--good)', early:'var(--warm)', trend:'var(--good)', hot:'var(--hot)', flat:'var(--out)', fade:'var(--cold)', weak:'var(--cold)'};
@@ -237,36 +149,32 @@ function spark(vals, color, w=300, h=64){
 function render(d){
   const t = new Date(d.updated);
   $('#updated').textContent = (d.mock?'サンプルデータ ・ ':'') + t.toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' 更新';
-  const b = d.btc, dd = b.dom_24h;
+  const b = d.btc;
   let h = '';
   for(const w of d.warnings||[]) h += `<div class="warn">${esc(w)}</div>`;
 
-  h += `<div class="dom">
-    <div><div class="cap">BTCドミナンス</div>
-      <div class="big num">${b.dom.toFixed(1)}<small>%</small></div></div>
-    <div>${spark(d.dom_series.map(p=>p[1]), 'var(--ink)')}
-      <div class="cap">過去7日 ${dd==null?'':`<span class="delta num ${dd<0?'down':'up'}">24h ${dd>0?'+':''}${dd.toFixed(2)}pt</span>`}<a class="go-long" href="#long">長期チャート ↓</a></div></div>
-    <p>${esc(b.phase)}</p></div>`;
-
-  const f = d.fng;
-  if(f){
-    h += `<div class="mood">
-      <div><div class="cap">恐怖・強欲指数</div>
-        <div><span class="big num" style="color:${fngColor(f.value)}">${f.value}</span><span class="lbl" style="color:${fngColor(f.value)}">${esc(f.label)}</span></div></div>
-      <div><div class="gauge"><i style="left:${f.value}%"></i></div>
-        ${spark(f.series||[], fngColor(f.value), 300, 40)}
-        <div class="cap">過去30日 ${f.d1==null?'':`<span class="num">前日比 ${pt(f.d1)}</span>`} ${f.d7==null?'':`<span class="num">・7日前比 ${pt(f.d7)}</span>`}</div></div>
-      <p>${esc(f.text)}</p></div>`;
+  const coins = d.coins||[], f = d.flow;
+  if(f && coins.length){
+    const li = s => `<li><span><b>${esc(s.name)}</b><small>${esc(s.phase_text)} ・ ${esc(s.syms.join(', '))}</small></span><span class="num" style="color:${s.rel_24h<0?'var(--cold)':'var(--warm)'}">${sp(s.rel_24h)}</span></li>`;
+    const rows = [...coins].filter(c=>c.rel_24h!=null).sort((a,b)=>b.rel_24h-a.rel_24h);
+    const max = Math.max(3, ...rows.map(c=>Math.abs(c.rel_24h)));
+    h += `<section style="margin-top:22px"><h2>今の資金の流れ</h2><p class="sub">上位${d.top_rank}位の銘柄とその関連セクターの、24時間のBTC比。BTC自体は24h ${sp(b.chg_24h)}${b.chg_7d!=null?`・7日 ${sp(b.chg_7d)}`:''}。</p>
+      <div class="flow"><p class="ftxt">${esc(f.text)}</p>
+      ${f.in_secs.length||f.out_secs.length?`<div class="fsec"><div><h3>資金が向かっているセクター</h3><ul>${f.in_secs.map(li).join('')||'<li>なし</li>'}</ul></div>
+        <div><h3>資金が抜けているセクター</h3><ul>${f.out_secs.map(li).join('')||'<li>なし</li>'}</ul></div></div>`:''}
+      <div class="fbars">${rows.map(c=>{ const w = Math.min(50, Math.abs(c.rel_24h)/max*50), pos = c.rel_24h>=0;
+        return `<div class="fb"><b>${esc(c.sym)}</b>
+          <div class="bar"><i style="${pos?'left:50%':'right:50%'};width:${w}%;background:${pos?'var(--warm)':'var(--cold)'}"></i></div>
+          <span class="v num">${sp(c.rel_24h)}</span><small class="num">${c.mcap_chg==null?'—':(c.mcap_chg>=0?'+':'-')+vol(Math.abs(c.mcap_chg))}</small></div>`; }).join('')}
+      <p class="sub" style="margin:6px 0 0">棒は24時間のBTC比、右端は24時間の時価総額の増減。</p></div></div></section>`;
   }
-
-  const coins = d.coins||[];
   h += `<section><h2>上位${d.top_rank}位の銘柄</h2><p class="sub">ステーブル・ラップ系を除いた銘柄を、状態の良い順に並べています。大きい数字は24時間のBTC比。名前をタップするとHyperliquidの取引画面が開きます。先物: ${esc(d.deriv_source||'取得できず')}</p>`;
   if(!coins.length) h += `<div class="empty">銘柄のデータがありません。</div>`;
   else {
     const ent = coins.filter(c=>c.entry), pk = coins.filter(c=>(d.picks||[]).includes(c.id));
     h += `<div class="picks">${ent.length ? `<b>条件がそろった銘柄:</b> ${ent.map(c=>esc(c.sym)).join('、')}` : '今は条件がそろった銘柄はありません。'}
       ${pk.length ? `<br>注目（出遅れ候補・初動・トレンド中）: ${pk.map(c=>esc(c.sym)).join('、')}` : '<br>出遅れ候補・初動・トレンド中の銘柄もありません。無理に探さなくていい時間帯です。'}
-      <br><span style="color:var(--muted);font-size:12px">条件: 出遅れ候補・初動・トレンド中 ＋ 上昇トレンド ＋ OIに危ないズレなし ＋ 相場全体が強欲すぎない（上から最大3つ）</span></div>`;
+      <br><span style="color:var(--muted);font-size:12px">条件: 出遅れ候補・初動・トレンド中 ＋ 上昇トレンド ＋ OIに危ないズレなし（上から最大3つ）</span></div>`;
   }
   for(const c of coins){
     const pc = ST_PC[c.status], ch = c.chain;
@@ -294,177 +202,14 @@ function render(d){
   }
   h += `</section>`;
 
-  const pl = d.plan || {up:[], down:[]};
-  const card = s => `<div class="pc" style="border-top-color:${PH[s.phase]}">
-    <div class="pc-h"><b>${esc(s.name)}</b><span class="chip" style="background:${PH[s.phase]}">${esc(s.phase_text)}</span><span class="num">${sp(s.rel_24h)}</span></div>
-    <div class="pc-m">対BTC 24h${s.streak_h>=2?` ・ ${s.streak_h}時間BTC超え`:''}${s.rel_7d!=null?` ・ 対BTC 7日 ${sp(s.rel_7d)}`:''}${s.med_7d!=null?` ・ 銘柄の7日中央値 ${sp(s.med_7d)}`:''}</div>
-    <div class="pc-a">${esc(s.action)}</div>
-    <table><tbody>${s.coins.map(c=>`<tr><td><b>${esc(c.symbol)}</b>${ven(c.venues)}</td><td class="num">${sp(c.chg_24h)}</td>
-      <td style="color:var(--muted)">FR ${fr(c.fr8h)}</td><td class="tg" style="color:${TAGC[c.tag]||'var(--muted)'}">${esc(c.tag||'')}</td></tr>`).join('')}</tbody></table></div>`;
-  h += `<section><h2>セクターの作戦</h2><p class="sub">BTCより強いセクターと弱いセクターを選び、Hyperliquid（HL）とOstium（Ost）で取引できる銘柄を出来高順に並べています。数字は24時間の値動き、FRは8時間あたりの資金調達率です。</p>`;
-  if(!pl.up.length && !pl.down.length) h += `<div class="empty">次のデータ更新で表示されます。</div>`;
-  else h += `<div class="plan">${pl.up.length?`<h3>資金が向かっているセクター</h3>${pl.up.map(card).join('')}`:''}
-    ${pl.down.length?`<h3>資金が抜けているセクター</h3>${pl.down.map(card).join('')}`:''}</div>`;
-  const secs = d.sectors, max = Math.max(4, ...secs.map(s=>Math.abs(s.rel_24h)));
-  h += `<details class="allsec"><summary>全セクター一覧（対BTC・24時間）</summary><p class="sub">中央線より右がBTCより強いセクターです。</p><div class="sectors" id="secs">`;
-  secs.forEach((s,i)=>{
-    const w = Math.min(50, Math.abs(s.rel_24h)/max*50), pos = s.rel_24h>=0;
-    const note = [s.rel_7d!=null?`7日 ${sp(s.rel_7d)}`:null, (s.streak_h??0)>=2?`${s.streak_h}時間BTC超え`:null].filter(Boolean).join('　');
-    h += `<div class="sec"${i>=15?' hidden':''}>
-      <div class="nm"><div>${esc(s.name)}</div><span>${esc(note||s.top.join(', '))}</span></div>
-      <div class="bar"><i style="${pos?'left:50%':`right:50%`};width:${w}%;background:${pos?'var(--warm)':'var(--cold)'}"></i></div>
-      <div class="v num">${sp(s.rel_24h)}<small>単体 ${sp(s.chg_24h)}</small></div></div>`;
-  });
-  h += `</div>${secs.length>15?`<button class="more" id="more">残り${secs.length-15}件を表示</button>`:''}</details></section>`;
-
-  h += `<section id="long"><h2>長期チャート</h2><p class="sub">BTC・ETHの価格、BTCドミナンス、恐怖・強欲指数を同じ時間軸で並べています。グラフをなぞると、その日の値が全部出ます。</p>
-    <div class="ranges" role="group" aria-label="期間">${RANGES.map(([n,l])=>`<button data-r="${n}" aria-pressed="${n===RANGE}">${l}</button>`).join('')}
-      <span class="sep"></span><button data-log aria-pressed="${LOG}">価格を対数目盛</button></div>
-    <div class="lc" id="lc"></div></section>`;
   $('#app').innerHTML = h;
-  LAST = d;
-  document.querySelectorAll('.ranges button').forEach(b => b.onclick = () => {
-    if(b.hasAttribute('data-log')) LOG = !LOG; else RANGE = +b.dataset.r;
-    document.querySelectorAll('.ranges button[data-r]').forEach(x => x.setAttribute('aria-pressed', +x.dataset.r===RANGE));
-    $('.ranges button[data-log]').setAttribute('aria-pressed', LOG);
-    drawLong();
-  });
-  drawLong();
-  const m = $('#more');
-  if(m) m.onclick = () => { document.querySelectorAll('.sec[hidden]').forEach(e=>e.hidden=false); m.remove(); };
 }
 
-// ---------- 長期チャート ----------
-const RANGES = [[90,'3ヶ月'],[182,'半年'],[365,'1年'],[1825,'5年'],[0,'全期間']];
-let RANGE = 365, LOG = true, LT = null, LAST = null;
-const DAY = 864e5;
-const usd = v => v==null ? '—' : '$' + (v>=100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(2));
-const usdK = v => v>=1e6 ? '$'+(v/1e6).toFixed(1)+'M' : v>=1e3 ? '$'+(v/1e3).toFixed(v>=1e4?0:1)+'k' : '$'+(v>=10?Math.round(v):v.toFixed(1));
-const ymd = t => { const d = new Date(t); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`; };
-
-function longSeries(d){
-  const day = Math.floor(Date.parse(d.updated)/DAY)*DAY;
-  const pts = (k, live) => {  // 保存済みの日足 + 今の値を今日の点として足す
-    const a = (LT?.[k]||[]).map(([t,v]) => [t*1000, v]);
-    if(live!=null){ if(a.length && a[a.length-1][0]>=day) a[a.length-1] = [day, live]; else a.push([day, live]); }
-    return a;
-  };
-  return [
-    {name:'BTC価格', color:'var(--warm)', price:true, fmt:usd, axis:usdK, pts:pts('btc', d.btc.price)},
-    {name:'ETH価格', color:'var(--cold)', price:true, fmt:usd, axis:usdK, pts:pts('eth', d.btc.eth_price)},
-    {name:'BTCドミナンス', color:'var(--ink)', fmt:v=>v.toFixed(1)+'%', axis:v=>v.toFixed(1)+'%', pts:pts('dom', d.btc.dom), dom:true},
-    {name:'恐怖・強欲指数', color:'var(--mild)', fmt:v=>String(Math.round(v)), axis:v=>String(v), pts:pts('fng', d.fng?.value), fixed:[0,100]},
-  ];
-}
-
-function niceTicks(lo, hi, n){
-  const step0 = (hi-lo)/n, mag = Math.pow(10, Math.floor(Math.log10(step0||1))), r = step0/mag;
-  const step = (r>5?10:r>2?5:r>1?2:1)*mag, out = [];
-  for(let v = Math.ceil(lo/step)*step; v <= hi+1e-9; v += step) out.push(+v.toFixed(10));
-  return out;
-}
-function logTicks(lo, hi){
-  const out = [];
-  for(let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++)
-    for(const m of [1,2,5]){ const v = m*Math.pow(10,e); if(v>=lo && v<=hi) out.push(v); }
-  return out.length>=2 ? (out.length>5 ? out.filter((_,i)=>i%2===0) : out) : niceTicks(lo, hi, 3);
-}
-function timeTicks(t0, t1){
-  const span = (t1-t0)/DAY, out = [], d = new Date(t0);
-  const stepM = span>1500 ? 12 : span>700 ? 6 : span>300 ? 3 : 1;
-  let y = d.getFullYear(), m = d.getMonth()+1;
-  if(stepM===12){ m = 0; y++; } else m = Math.ceil(m/stepM)*stepM;
-  for(;;){ if(m>=12){ y += Math.floor(m/12); m %= 12; } const t = new Date(y, m, 1).getTime(); if(t>t1) break;
-    if(t>=t0) out.push([t, stepM===12||m===0 ? String(y) : `${String(y).slice(2)}/${m+1}`]); m += stepM; }
-  return out;
-}
-
-function drawLong(){
-  const box = $('#lc'); if(!box || !LAST) return;
-  if(!LT){ box.innerHTML = '<div class="empty">長期データを読み込み中…（まだ無い場合は次の更新で作られます）</div>'; return; }
-  const W = Math.max(280, box.clientWidth), PR = 50, PW = W - PR, H = 118;
-  const series = longSeries(LAST);
-  const t1 = Math.floor(Date.parse(LAST.updated)/DAY)*DAY;
-  const first = Math.min(...series.map(s => s.pts.length ? s.pts[0][0] : t1));
-  const t0 = RANGE ? t1 - RANGE*DAY : first;
-  const X = t => (t-t0)/(t1-t0||1)*PW;
-  const ticks = timeTicks(t0, t1);
-  let html = '';
-  series.forEach((s, si) => {
-    s.view = s.pts.filter(p => p[0]>=t0 && p[0]<=t1);
-    const last = si===series.length-1, h = H + (last?20:0);
-    const vs = s.view.map(p=>p[1]);
-    const log = s.price && LOG && vs.length && Math.min(...vs)>0;
-    let lo = s.fixed ? s.fixed[0] : Math.min(...vs), hi = s.fixed ? s.fixed[1] : Math.max(...vs);
-    if(!s.fixed){ const pad = log ? 0 : (hi-lo)*.08 || Math.abs(hi)*.01 || 1; lo -= pad; hi += pad; }
-    const f = log ? Math.log10 : v => v, flo = f(lo), fhi = f(hi);
-    s.Y = v => 6 + (1-(f(v)-flo)/((fhi-flo)||1))*(H-12);
-    const chg = vs.length>1 && !s.fixed && !s.dom ? (vs[vs.length-1]/vs[0]-1)*100 : null;
-    const cur = vs.length ? vs[vs.length-1] : null;
-    html += `<div class="lc-c"><div class="lc-h"><b>${s.name}</b><span class="num">${cur==null?'—':s.fmt(cur)}</span>
-      ${chg!=null?`<small>この期間 ${sp(chg)}</small>`:''}${s.dom&&s.pts.length?`<small>${ymd(s.pts[0][0])} から記録中</small>`:''}</div>
-      <svg width="${W}" height="${h}" viewBox="0 0 ${W} ${h}" data-i="${si}">`;
-    if(s.fixed){  // 恐怖(0-25)と強欲(75-100)の帯
-      html += `<rect x="0" y="${s.Y(100)}" width="${PW}" height="${s.Y(75)-s.Y(100)}" fill="var(--hot)" opacity=".09"/>
-        <rect x="0" y="${s.Y(25)}" width="${PW}" height="${s.Y(0)-s.Y(25)}" fill="var(--cold)" opacity=".09"/>
-        <text x="4" y="${s.Y(100)+13}">強欲</text><text x="4" y="${s.Y(0)-4}">恐怖</text>`;
-    }
-    const yt = s.fixed ? [0,25,50,75,100] : vs.length ? (log ? logTicks(lo,hi) : niceTicks(lo,hi,3)) : [];
-    for(const v of yt) html += `<line x1="0" x2="${PW}" y1="${s.Y(v)}" y2="${s.Y(v)}" stroke="var(--rule)" stroke-width="1"/>
-      <text x="${PW+6}" y="${s.Y(v)+4}">${s.axis(v)}</text>`;
-    for(const [t] of ticks) html += `<line x1="${X(t)}" x2="${X(t)}" y1="6" y2="${H-6}" stroke="var(--rule)" stroke-width="1" opacity=".5"/>`;
-    if(last) for(const [t,l] of ticks) html += `<text x="${X(t)}" y="${H+14}" text-anchor="middle">${l}</text>`;
-    if(s.view.length>1){
-      const d = s.view.map((p,k)=>`${k?'L':'M'}${X(p[0]).toFixed(1)},${s.Y(p[1]).toFixed(1)}`).join('');
-      html += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"/>`;
-    }
-    html += `<line class="xh" y1="6" y2="${H-6}" stroke="var(--muted)" stroke-width="1" style="display:none"/>
-      <circle class="dot" r="4" fill="${s.color}" stroke="var(--bg)" stroke-width="2" style="display:none"/></svg>`;
-    if(s.dom && s.view.length<30) html += `<p class="note">BTCドミナンスの過去データは無料のAPIでは取れないため、このツールが1日1点ずつ記録しています。使うほど長く見られるようになります。</p>`;
-    html += `</div>`;
-  });
-  if(!(LT.btc||[]).length) html = `<div class="warn" style="margin:0 0 12px">過去の価格データはまだありません。次のデータ更新（毎時13分）で5年分以上が自動で入ります。</div>` + html;
-  box.innerHTML = html + '<div class="lc-tip" id="lctip"></div>';
-  const tip = $('#lctip');
-  const near = (a, t) => { let lo = 0, hi = a.length-1; if(hi<0) return null;
-    while(lo<hi){ const m = (lo+hi)>>1; if(a[m][0]<t) lo = m+1; else hi = m; }
-    const p = lo>0 && Math.abs(a[lo-1][0]-t) < Math.abs(a[lo][0]-t) ? a[lo-1] : a[lo];
-    return Math.abs(p[0]-t) <= 2*DAY ? p : null; };
-  const hide = () => { tip.style.display='none'; box.querySelectorAll('.xh,.dot').forEach(e=>e.style.display='none'); };
-  box.onpointerleave = hide;
-  box.onpointermove = e => {
-    const r = box.querySelector('svg').getBoundingClientRect(), x = e.clientX - r.left;
-    if(x<0 || x>PW) return hide();
-    const t = t0 + x/PW*(t1-t0);
-    let rows = '';
-    series.forEach((s, si) => {
-      const svg = box.querySelector(`svg[data-i="${si}"]`), xh = svg.querySelector('.xh'), dot = svg.querySelector('.dot');
-      const p = near(s.view, t);
-      xh.setAttribute('x1', x); xh.setAttribute('x2', x); xh.style.display = '';
-      if(p){ dot.setAttribute('cx', X(p[0])); dot.setAttribute('cy', s.Y(p[1])); dot.style.display = ''; }
-      else dot.style.display = 'none';
-      rows += `<div><i style="background:${s.color}"></i>${s.name}<b>${p ? s.fmt(p[1]) : '—'}</b></div>`;
-    });
-    tip.innerHTML = `<div style="font-weight:700">${ymd(t)}</div>${rows}`;
-    tip.style.display = 'block';
-    const tw = tip.offsetWidth, br = box.getBoundingClientRect();
-    tip.style.left = Math.min(Math.max(0, x + 14 > PW - tw ? x - tw - 14 : x + 14), br.width - tw) + 'px';
-    tip.style.top = Math.max(0, e.clientY - br.top - 40) + 'px';
-  };
-}
-addEventListener('resize', () => { clearTimeout(drawLong.t); drawLong.t = setTimeout(drawLong, 150); });
-
-async function loadLong(mock){
-  for(const f of [mock ? 'longterm.mock.json' : 'longterm.json']){
-    try{ const r = await fetch(`${f}?t=${Math.floor(Date.now()/36e5)}`); if(r.ok){ LT = await r.json(); return drawLong(); } }catch(e){}
-  }
-  LT = {}; drawLong();
-}
+const usd = v => v==null ? '—' : '$' + (v>=100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(v>=1?2:4));
 
 async function load(){
   if(window.__DATA__) return render(window.__DATA__);
   const q = new URLSearchParams(location.search).has('mock');
-  if(!LT) loadLong(q);
   for(const f of q ? ['data.mock.json'] : ['data.json','data.mock.json']){
     try{ const r = await fetch(`${f}?t=${Date.now()}`); if(r.ok) return render(await r.json()); }catch(e){}
   }

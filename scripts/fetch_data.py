@@ -24,10 +24,6 @@ DATA_PATH = DOCS / ("data.mock.json" if MOCK else "data.json")
 HIST_PATH = DOCS / "history.json"
 META_PATH = ROOT / "cache" / "coin_meta.json"  # 上位銘柄がどのセクターに属するか（CoinGecko）のキャッシュ
 HIST_MAX = 24 * 30  # 30日分（1時間ごと）
-LONG_PATH = DOCS / ("longterm.mock.json" if MOCK else "longterm.json")
-LONG_START = 1483228800  # 2017-01-01。長期チャートの価格はここから
-LONG_REFRESH = 20 * 3600  # 価格と恐怖・強欲指数の全期間は1日1回だけ取り直す
-
 CG_KEY = os.environ.get("COINGECKO_API_KEY", "")
 CG_BASE = "https://api.coingecko.com/api/v3"
 UA = {"User-Agent": "sector-heat/1.0"}
@@ -53,9 +49,6 @@ MAX_CATS = 80
 PX_MOVE = 1.0      # 価格が24hで±1%以上動いたら「動いた」扱い
 OI_MOVE = 5        # 価格の影響を除いたOIが±5%以上で「増えた/減った」扱い
 OI_SURGE = 10      # 価格が動かないのにOIが+10%以上なら「OIだけ急増」
-FNG_GREED = 75     # 恐怖・強欲指数がこれ以上ならエントリー候補から外す
-ENTRY_MIN_SCORE = 60  # 温度がこれ未満のチェーンは「条件そろい」にしない
-ENTRY_MAX = 3         # 「条件そろい」は温度の高い順に最大この件数まで
 # 取引できる銘柄（Hyperliquid の無期限先物 ＋ Ostium）
 OSTIUM_FALLBACK = ["BTC", "ETH", "SOL"]  # Ostium のAPIが取れなかったときに使う
 # Ostium は株・指数・商品も扱っていて、SPX（S&P500）や META（Meta株）が同じ記号の仮想通貨と混ざるため、
@@ -78,13 +71,6 @@ TOKEN_SKIP_CATS = {"CEX", "Chain", "Bridge", "Canonical Bridge", "Cross Chain Br
 CHAIN_ECO = {"BSC": "BNB Chain Ecosystem", "Hyperliquid L1": "Hyperliquid Ecosystem",
              "OP Mainnet": "Optimism Ecosystem", "XRPL": "XRP Ledger Ecosystem",
              "Near": "Near Protocol Ecosystem", "TON": "TON Ecosystem"}
-# セクターの作戦
-PLAN_UP = 4             # 資金が向かっているセクターを何個出すか
-PLAN_DOWN = 2           # 資金が抜けているセクターを何個出すか
-PLAN_COINS = 8          # 1セクターあたり表示する取引できる銘柄の数
-SECTOR_SKIP = ("stablecoin", "tokenized", "usd", "gold", "treasur", "money-market", "commodit", "fiat",
-               "made-in", "alleged", "portfolio", "launchpool", "launchpad", "hodler", "binance-alpha", "ido",
-               "yzi-labs", "exchange-based", "centralized-exchange", "wallets", "crypto-card", "neobank")
 # いまの見立て（時価総額上位の銘柄ごとの状態）
 TOP_RANK = 20          # 監視するのは時価総額ランクこの順位まで（ステーブル・ラップ系は除く）
 META_REFRESH_DAYS = 7  # 銘柄のカテゴリ情報はめったに変わらないので週1で取り直す
@@ -105,6 +91,8 @@ EXCLUDE_CAT = ["portfolio", "holdings", "index", "launchpool", "launchpad", "all
 LAG_MIN_SECTOR = 3.0   # 「出遅れ候補」にするのは、関連セクターがBTC比+3%以上動いているときだけ
 PICKS_MAX = 5          # 「いまの見立て」に出す銘柄数
 COIN_ENTRY_MAX = 3     # 銘柄の「条件そろい」は並び順で最大この件数まで
+FLOW_MOVE = 1.0        # 「資金の流れ」で、BTC比がこれ以上動いた銘柄を「強い／抜けている」とする
+FLOW_SECS = 3          # 「資金の流れ」に出すセクターの数
 PHASES = {"early": "初動", "trend": "トレンド中", "hot": "過熱", "fade": "失速", "weak": "弱い", "flat": "横ばい"}
 PHASE_RANK = {"early": 0, "trend": 1, "hot": 2, "flat": 3, "fade": 4, "weak": 5}
 STATUS = {  # 上位銘柄ごとの「いまの状態」（表示名, 並び順）
@@ -213,23 +201,20 @@ def cg(path, params=None):
 
 
 def fetch_market():
-    """1時間あたり3回: 全体、カテゴリ一覧、上位銘柄（BTC・ETHの価格もここから）"""
-    g = cg("/global")["data"]
+    """1時間あたり2回: カテゴリ一覧、上位銘柄（BTCの値動きもここから）"""
     cats = cg("/coins/categories")
     top = cg("/coins/markets", {"vs_currency": "usd", "order": "market_cap_desc", "per_page": 60,
                                 "page": 1, "price_change_percentage": "24h,7d"})
     btc = next(c for c in top if c["id"] == "bitcoin")
-    eth = next((c for c in top if c["id"] == "ethereum"), {})
-    return {"btc_dom": g["market_cap_percentage"]["btc"], "btc_price": btc["current_price"],
+    return {"btc_price": btc["current_price"],
             "btc_24h": btc.get("price_change_percentage_24h_in_currency") or 0.0,
             "btc_7d": btc.get("price_change_percentage_7d_in_currency"),
-            "eth_price": eth.get("current_price"), "eth_24h": eth.get("price_change_percentage_24h_in_currency"),
             "cats": cats, "top": top}
 
 
 def refresh_meta(top, meta, now_ts):
     """銘柄ごとのカテゴリ（どのセクターに属するか）をキャッシュ。古いものだけ取り直す"""
-    stale = [c["id"] for c in top if (c.get("market_cap_rank") or 999) <= TOP_RANK + 10
+    stale = [c["id"] for c in top if (c.get("market_cap_rank") or 999) <= TOP_RANK + 10 and c["id"] != "bitcoin"
              and now_ts - meta.get(c["id"], {}).get("ts", 0) > META_REFRESH_DAYS * 86400]
     for cid in stale[:META_PER_RUN]:
         d = safe(lambda: cg(f"/coins/{cid}", {"localization": "false", "tickers": "false",
@@ -391,126 +376,6 @@ def fetch_prices(symbols):
     return out
 
 
-# ---------- 長期チャート（日足） ----------
-def day_of(ts):
-    return int(ts) // 86400 * 86400
-
-
-def daily_binance(sym):
-    out, start = {}, LONG_START * 1000
-    for _ in range(10):
-        k = get("https://data-api.binance.vision/api/v3/klines",
-                params={"symbol": f"{sym}USDT", "interval": "1d", "startTime": start, "limit": 1000})
-        if not k:
-            break
-        out.update({day_of(x[0] / 1000): float(x[4]) for x in k})
-        if len(k) < 1000:
-            break
-        start = k[-1][0] + 86400000
-        time.sleep(0.3)
-    return sorted(out.items())
-
-
-def daily_okx(sym):
-    out, after = {}, None
-    for _ in range(40):  # 100日ずつ過去へ
-        params = {"instId": f"{sym}-USDT", "bar": "1Dutc", "limit": 100}
-        if after:
-            params["after"] = after
-        d = get("https://www.okx.com/api/v5/market/history-candles", params=params)["data"]
-        if not d:
-            break
-        out.update({day_of(int(x[0]) / 1000): float(x[4]) for x in d})
-        after = d[-1][0]
-        if int(after) / 1000 < LONG_START:
-            break
-        time.sleep(0.25)
-    return sorted(out.items())
-
-
-def daily_prices(sym):
-    for name, fn in (("Binance", daily_binance), ("OKX", daily_okx)):
-        pts = safe(lambda: fn(sym))
-        if pts and len(pts) > 30:
-            print(f"  {sym}: {name} {len(pts)}日分")
-            return [[t, round(v, 2)] for t, v in pts]
-    return None
-
-
-def fng_history():
-    d = get("https://api.alternative.me/fng/", params={"limit": 0})["data"]
-    return sorted([[day_of(x["timestamp"]), int(x["value"])] for x in d])
-
-
-def update_longterm(lt, now_ts, dom, hist):
-    """価格・恐怖強欲は1日1回全期間を取り直し、BTCドミナンスは自前で1日1点ずつ貯める"""
-    if now_ts - lt.get("refreshed", 0) > LONG_REFRESH:
-        print("長期チャート...")
-        for key, sym in (("btc", "BTC"), ("eth", "ETH")):
-            pts = daily_prices(sym)
-            if pts:
-                lt[key] = pts
-        f = safe(fng_history)
-        if f:
-            lt["fng"] = f
-        lt["refreshed"] = now_ts
-    doms = lt.setdefault("dom", [])
-    if not doms:  # 初回は溜まっている1時間ごとの履歴から日ごとの値を作る
-        for snap in hist:
-            if not doms or doms[-1][0] != day_of(snap["ts"]):
-                doms.append([day_of(snap["ts"]), round(snap["btc_dom"], 3)])
-    today = day_of(now_ts)
-    if not doms or doms[-1][0] != today:
-        doms.append([today, round(dom, 3)])
-    return lt
-
-
-def mock_longterm(now_ts):
-    random.seed(11)
-    lt = {"btc": [], "eth": [], "fng": [], "dom": [], "refreshed": now_ts}
-    b, e = 1000.0, 8.0
-    for t in range(day_of(LONG_START), day_of(now_ts) + 1, 86400):
-        i = (t - LONG_START) / 86400
-        b *= 1 + 0.0016 + 0.035 * math.sin(i / 90) * 0.1 + random.uniform(-0.035, 0.035)
-        e *= 1 + 0.0019 + 0.045 * math.sin(i / 70) * 0.1 + random.uniform(-0.045, 0.045)
-        lt["btc"].append([t, round(b, 2)])
-        lt["eth"].append([t, round(e, 2)])
-        if t >= 1517443200:  # 2018-02-01〜
-            lt["fng"].append([t, max(3, min(97, round(50 + 30 * math.sin(i / 45) + random.uniform(-12, 12))))])
-    for key, end in (("btc", 113400), ("eth", 4120)):  # サンプルの「今の価格」につながるように縮尺を合わせる
-        k = end / lt[key][-1][1]
-        lt[key] = [[t, round(v * k, 2)] for t, v in lt[key]]
-    for t in range(day_of(now_ts) - 20 * 86400, day_of(now_ts) + 1, 86400):
-        lt["dom"].append([t, round(57.1 + math.sin((day_of(now_ts) - t) / 86400 / 4) * 0.6, 3)])
-    return lt
-
-
-# ---------- 恐怖・強欲指数 ----------
-FNG_JA = {"Extreme Fear": "極端な恐怖", "Fear": "恐怖", "Neutral": "中立",
-          "Greed": "強欲", "Extreme Greed": "極端な強欲"}
-
-
-def fng_text(v):
-    if v <= 25:
-        return "恐怖が強い状態です。逆張りの買い場になりやすい一方、下げ止まりを確認してからが安全です。"
-    if v >= FNG_GREED:
-        return "強欲が強い状態です。天井付近のことが多いので、新しいエントリーは慎重に。"
-    if v < 46:
-        return "恐怖寄りです。慌てた売りが出やすい一方、仕込み場になることもあります。"
-    if v >= 55:
-        return "強欲寄りです。上がりやすい地合いですが、過熱のサインも合わせて確認を。"
-    return "中立圏です。個別のチェーンやセクターの動きを優先して見ましょう。"
-
-
-def fetch_fng():
-    d = get("https://api.alternative.me/fng/", params={"limit": 30})["data"]  # 新しい順
-    vals = [int(x["value"]) for x in d]
-    return {"value": vals[0], "label": FNG_JA.get(d[0]["value_classification"], d[0]["value_classification"]),
-            "d1": vals[0] - vals[1] if len(vals) > 1 else None,
-            "d7": vals[0] - vals[7] if len(vals) > 7 else None,
-            "series": list(reversed(vals)), "text": fng_text(vals[0])}
-
-
 # ---------- 取引できる銘柄 ----------
 def hl_symbol(name):
     """Hyperliquid の kPEPE（1000枚単位）などを PEPE にそろえる"""
@@ -584,65 +449,6 @@ class CatCache:
 
     def save(self):
         self.path.write_text(json.dumps(self.d, separators=(",", ":")))
-
-
-# ---------- セクターの作戦 ----------
-def median(xs):
-    xs = sorted(x for x in xs if x is not None)
-    return xs[len(xs) // 2] if xs else None
-
-
-def sector_phase(s, med7):
-    if s["rel_24h"] >= 10 or (med7 or 0) >= 40:
-        return "hot", "過熱", "新しく買うのは控えめに。持っているなら一部利確を検討。"
-    if s["streak_h"] >= 12 or (med7 or 0) >= 10:
-        return "cont", "継続", "流れは続いている。先頭の銘柄を追いかけるより、押し目か出遅れ銘柄を待つ。"
-    return "early", "初動", "強くなり始めたところ。出遅れ候補を小さく試し、セクターがBTCより弱くなったら撤退。"
-
-
-def build_plan(sectors, tradable, cache):
-    """強いセクター・弱いセクターごとに、HyperliquidかOstiumで取引できる銘柄を並べる"""
-    cands = [s for s in sectors if not any(k in s["id"] for k in SECTOR_SKIP)]
-    up, down = [], []
-    for side, pool, n in (("up", sorted(cands, key=lambda x: -x["rel_24h"]), PLAN_UP),
-                          ("down", sorted(cands, key=lambda x: x["rel_24h"]), PLAN_DOWN)):
-        out = up if side == "up" else down
-        for s in pool:
-            if len(out) >= n or (side == "up" and s["rel_24h"] <= 0) or (side == "down" and s["rel_24h"] >= 0):
-                break
-            m = cache.members(s["id"])
-            if not m:
-                continue
-            coins = [coin_row(sym, tradable[sym], px_7d=m[sym]) for sym in m if sym in tradable]
-            if len(coins) < 2:
-                continue
-            coins.sort(key=lambda c: -(c["vol"] or 0))  # 出来高の多い順（入りやすさ）
-            coins = coins[:PLAN_COINS]
-            med7 = median([c["px_7d"] for c in coins])
-            chgs = [c["chg_24h"] for c in coins if c["chg_24h"] is not None]
-            med24 = median(chgs)
-            if side == "up":
-                code, ph, act = sector_phase(s, med7)
-                lead = max(coins, key=lambda c: c["chg_24h"] if c["chg_24h"] is not None else -1e9)
-                for c in coins:
-                    if c is lead and (c["chg_24h"] or 0) > 0:
-                        c["tag"] = "先頭"
-                    elif (c["chg_24h"] is not None and med24 is not None and c["chg_24h"] < med24
-                          and c["chg_24h"] > -3 and (c["fr8h"] is None or c["fr8h"] < FR_CALM)):
-                        c["tag"] = "出遅れ候補"
-            else:
-                code, ph = "down", "資金流出"
-                act = "ロングは避ける。弱い銘柄はショート候補（ロングが資金調達料を払っている銘柄は特に）。"
-                # 下がっている銘柄のうち、ロングが資金調達料を払っている（FR>=0）ものを優先
-                weak = sorted([c for c in coins if (c["chg_24h"] or 0) < 0],
-                              key=lambda c: ((c["fr8h"] or 0) < 0, c["chg_24h"]))
-                for c in weak[:2]:
-                    c["tag"] = "ショート候補"
-            out.append({"id": s["id"], "name": s["name"], "rel_24h": s["rel_24h"], "rel_7d": s["rel_7d"],
-                        "streak_h": s["streak_h"], "med_7d": med7, "phase": code, "phase_text": ph,
-                        "action": act, "coins": coins})
-    print(f"  plan: up={len(up)} down={len(down)}")
-    return {"up": up, "down": down}
 
 
 # ---------- 注目トークン（各チェーンで取引できるもの） ----------
@@ -768,13 +574,6 @@ def score_chains(rows):
     rows.sort(key=lambda r: -1 if r["score"] is None else r["score"], reverse=True)
 
 
-def entry_check(r, fng):
-    """資金流入 + 上昇トレンド + OIに危ないズレなし + 相場全体が強欲すぎない"""
-    ok = (r["label"] == "early" and r.get("trend") == "up" and r.get("div") not in ("warn", "weak")
-          and (r.get("score") or 0) >= ENTRY_MIN_SCORE and (fng is None or fng["value"] < FNG_GREED))
-    r["entry"] = bool(ok)
-
-
 def build_sectors(m, hist, now_ts):
     cats = [c for c in m["cats"]
             if (c.get("market_cap") or 0) >= MIN_CAT_MCAP and c.get("market_cap_change_24h") is not None]
@@ -897,7 +696,7 @@ def judge_coins(coins, sectors):
                 why += f"ただし{best['name']}は{best['phase_text']}です。"
         co["status"], co["status_text"], co["why"] = st, STATUS[st][0], why
     coins.sort(key=lambda c: (STATUS[c["status"]][1], c["rank"]))
-    return [c["id"] for c in coins if c["status"] in ("lag", "early", "trend")][:PICKS_MAX]
+    return [c["id"] for c in coins if c["status"] in ("lag", "early", "trend")][:PICKS_MAX], secs
 
 
 def top_symbols(m, meta):
@@ -906,7 +705,7 @@ def top_symbols(m, meta):
             and c["id"] != "bitcoin" and is_tradable_coin(c, meta)]
 
 
-def enrich_coins(coins, prices, chains, fng, hist):
+def enrich_coins(coins, prices, chains, hist):
     """銘柄ごとに、価格トレンド・OIのズレ・チェーンの資金の指標・条件そろいをまとめる"""
     chain_by_sym = {r["symbol"]: r for r in chains if r.get("symbol")}
     for co in coins:
@@ -919,7 +718,7 @@ def enrich_coins(coins, prices, chains, fng, hist):
                                                 "tvl_7d", "tokens")} if ch else None)
         co["px_series"] = [quiet(lambda s: s["cpx"][co["id"]], s) for s in hist[-47:]] + [co["price"]]
         co["entry"] = (co["status"] in ("lag", "early", "trend") and co["trend"] == "up"
-                       and co["div"] not in ("warn", "weak") and (fng is None or fng["value"] < FNG_GREED))
+                       and co["div"] not in ("warn", "weak"))
     n = 0
     for co in coins:  # coinsは状態の良い順
         if co["entry"]:
@@ -927,14 +726,36 @@ def enrich_coins(coins, prices, chains, fng, hist):
             co["entry"] = n <= COIN_ENTRY_MAX
 
 
-def phase_text(dom7):
-    if dom7 is None:
-        return "7日分の履歴が溜まると、BTCシェアの流れが表示されます。"
-    if dom7 <= -1.0:
-        return "BTCのシェアが下がっています。アルトに資金が回り始めている可能性があります。"
-    if dom7 >= 1.0:
-        return "BTCのシェアが上がっています。資金はBTCに集まり気味です。"
-    return "BTCのシェアはほぼ横ばいです。"
+def build_flow(coins, secs, m):
+    """上位銘柄とその関連セクターから「今どこに資金が向かっているか」をまとめる"""
+    for co in coins:  # 24時間の時価総額の増減（ドル）
+        c24, mc = co["chg_24h"], co.get("mcap")
+        co["mcap_chg"] = mc * c24 / (100 + c24) if (c24 is not None and mc) else None
+    by_rel = sorted([c for c in coins if c["rel_24h"] is not None], key=lambda c: -c["rel_24h"])
+    ins = [c for c in by_rel if c["rel_24h"] >= FLOW_MOVE]
+    outs = [c for c in reversed(by_rel) if c["rel_24h"] <= -FLOW_MOVE]
+    members = {n: [c["sym"] for c in by_rel if n in c["cats"]] for n in secs}
+    sec_rows = [{**s, "syms": members[n]} for n, s in secs.items() if members[n]]
+    in_secs = sorted([s for s in sec_rows if s["phase"] in ("early", "trend", "hot") and s["rel_24h"] > 0],
+                     key=lambda s: -s["rel_24h"])[:FLOW_SECS]
+    out_secs = sorted([s for s in sec_rows if s["phase"] in ("fade", "weak") and s["rel_24h"] < 0],
+                      key=lambda s: s["rel_24h"])[:FLOW_SECS]
+    new_money = [c["sym"] for c in by_rel if (c.get("oi_real") or 0) >= OI_MOVE and c["rel_24h"] > 0]
+    names = lambda xs: "・".join(xs)  # noqa: E731
+    if ins:
+        text = f"BTCより強いのは {names([c['sym'] for c in ins[:5]])}。"
+        if in_secs:
+            text += f"資金は{names([s['name'] for s in in_secs])}に向かっています。"
+    elif len(outs) >= len(coins) / 2 and (m.get("btc_24h") or 0) > 0:
+        text = "BTCだけが強く、アルトから資金が抜けています。BTCに集まっている時間帯です。"
+    else:
+        text = "BTCより目立って強い銘柄はありません。資金の行き先がはっきりしない、様子見の時間帯です。"
+    if new_money:
+        text += f" {names(new_money[:4])}は新しい買い（建玉の増加）を伴っています。"
+    if outs:
+        text += f" 抜けているのは {names([c['sym'] for c in outs[:4]])}。"
+    return {"text": text.strip(), "in": [c["sym"] for c in ins], "out": [c["sym"] for c in outs],
+            "in_secs": in_secs, "out_secs": out_secs, "new_money": new_money}
 
 
 # ---------- サンプルデータ ----------
@@ -988,7 +809,7 @@ def mock_all(now_ts):
     hist = []
     for h in range(72, 0, -1):
         ts = now_ts - h * 3600
-        hist.append({"ts": ts, "btc_dom": 58.5 - (72 - h) * 0.02 + math.sin(h / 5) * 0.1,
+        hist.append({"ts": ts,
                      "btc_price": 112000 + math.sin(h / 9) * 1500,
                      "cats": {cid: [mc * (1 - h * 0.0008), random.uniform(-1, 3) if cid == "solana-ecosystem"
                                     else random.uniform(-2, 2)] for cid, _, mc in cats_def},
@@ -1007,7 +828,7 @@ def mock_all(now_ts):
                     "price_change_percentage_24h_in_currency": c24,
                     "price_change_percentage_7d_in_currency": c24 * 1.6 + random.uniform(-3, 3)})
     meta = {cid: {"cats": cats, "ts": now_ts} for cid, _, _, cats in MOCK_COINS}
-    market = {"btc_dom": 57.1, "btc_price": 113400, "btc_24h": 1.2, "btc_7d": -0.8, "eth_price": 4120, "eth_24h": 2.3,
+    market = {"btc_price": 113400, "btc_24h": 1.2, "btc_7d": -0.8,
               "top": top, "cats": [
         {"id": cid, "name": nm, "market_cap": mc, "market_cap_change_24h": random.uniform(-4, 9),
          "top_3_coins_id": ["coin-a", "coin-b", "coin-c"]} for cid, nm, mc in cats_def]}
@@ -1025,11 +846,6 @@ def mock_all(now_ts):
             v *= 1 + drift + random.uniform(-0.02, 0.02)
             c.append(v)
         prices[s] = trend_stats(c)
-    fv = [max(5, min(95, round(50 + 25 * math.sin(i / 6) + random.uniform(-5, 5)))) for i in range(30)]
-    fv_label = next(t for lim, t in ((25, "極端な恐怖"), (46, "恐怖"), (54, "中立"), (75, "強欲"), (101, "極端な強欲"))
-                    if fv[-1] < lim)
-    fng = {"value": fv[-1], "label": fv_label, "d1": fv[-1] - fv[-2], "d7": fv[-1] - fv[-8],
-           "series": fv, "text": fng_text(fv[-1])}
     syms = ["BTC", "ETH", "SOL", "XRP", "DOGE", "WIF", "BONK", "PEPE", "POPCAT", "FARTCOIN", "JUP", "RAY", "PYTH",
             "JTO", "RENDER", "TAO", "FET", "VIRTUAL", "AI16Z", "ONDO", "PENDLE", "AAVE", "UNI", "MORPHO", "AERO",
             "ZRO", "STRK", "ZK", "OP", "ARB", "CETUS", "DEEP", "NAVX", "HYPE", "PURR", "LINK", "ENA", "ETHFI"]
@@ -1052,7 +868,7 @@ def mock_all(now_ts):
                                     for x in random.sample(syms[2:], 5)], key=lambda r: -r["vol"])
     for snap in hist[-26:]:  # 建玉の24時間変化を出すため、Hyperliquidの建玉の履歴も作る
         snap["oi"] = {k: v["oi_usd"] / random.Random(k).uniform(0.85, 1.25) for k, v in tradable.items() if v.get("oi_usd")}
-    return hist, market, chains, ("Mock", derivs), prices, fng, tokens, tradable, meta
+    return hist, market, chains, ("Mock", derivs), prices, tokens, tradable, meta
 
 
 class MockCache:
@@ -1072,7 +888,7 @@ def main():
     now_ts = int(time.time())
     warnings = []
     if MOCK:
-        hist, market, chains, (dsrc, derivs), prices, fng, tokens, tradable, meta = mock_all(now_ts)
+        hist, market, chains, (dsrc, derivs), prices, tokens, tradable, meta = mock_all(now_ts)
         cache = MockCache(tradable)
     else:
         hist = load(HIST_PATH, [])
@@ -1083,7 +899,7 @@ def main():
         market = fetch_market()
         meta = refresh_meta(market["top"], meta, now_ts)
         missing = [c["id"] for c in market["top"] if (c.get("market_cap_rank") or 999) <= TOP_RANK
-                   and c["id"] not in meta]
+                   and c["id"] not in meta and c["id"] != "bitcoin"]
         if missing:
             warnings.append(f"{len(missing)}銘柄のセクター情報がまだ取れていません（数時間で埋まります）。")
         print("DefiLlama...")
@@ -1113,8 +929,6 @@ def main():
                                                  + [r["symbol"] for r in chains if r["symbol"]])))
         if not prices:
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
-        print("恐怖・強欲指数...")
-        fng = safe(fetch_fng)
         cache = CatCache(CAT_PATH, now_ts, CAT_BUDGET)
 
     for r in chains:
@@ -1123,36 +937,24 @@ def main():
         p = prices.get(r["symbol"] or "", {})
         r.update({k: p.get(k) for k in ("price", "px_24h", "vs_ma7", "vs_ma30", "trend")})
     score_chains(chains)
-    for r in chains:
-        entry_check(r, fng)
-    for i, r in enumerate([r for r in chains if r["entry"]]):  # chainsは温度の高い順
-        r["entry"] = i < ENTRY_MAX
-
-    # スコアの推移（48時間）
-    for r in chains:
-        r["score_series"] = [s.get("chains", {}).get(r["name"]) for s in hist[-47:]] + [r["score"]]
 
     sectors = build_sectors(market, hist, now_ts)
-    print("いまの見立て...")
+    print("上位銘柄...")
     coins = build_coins(market, meta, tradable, hist, now_ts)
-    picks = judge_coins(coins, sectors)
-    print("セクターの作戦...")
-    plan = safe(lambda: build_plan(sectors, tradable, cache), {"up": [], "down": []})
-    if not MOCK:  # 作戦の方が大事なので、CoinGeckoの呼び出し枠は作戦→チェーンのトークンの順に使う
+    picks, secs = judge_coins(coins, sectors)
+    shown = [r for r in chains if r["symbol"] in {c["sym"] for c in coins}]  # 上位銘柄がそのチェーンの通貨のものだけ
+    if not MOCK:
         print("取引できるトークン...")
-        tokens = safe(lambda: fetch_tokens([r["name"] for r in chains],
+        tokens = safe(lambda: fetch_tokens([r["name"] for r in shown],
                                            {r["name"]: r["symbol"] for r in chains if r["symbol"]},
                                            tradable, cache, market["cats"]), {}) or {}
     for r in chains:
         r["tokens"] = tokens.get(r["name"], [])
     cache.save()
-    enrich_coins(coins, prices, chains, fng, hist)
-    dom = market["btc_dom"]
-    dom24 = hist_value(hist, lambda s: s["btc_dom"], 1, now_ts)
-    dom7 = hist_value(hist, lambda s: s["btc_dom"], 7, now_ts)
-    dom7_delta = dom - dom7 if dom7 is not None else None
+    enrich_coins(coins, prices, chains, hist)
+    flow = build_flow(coins, secs, market)
 
-    snap = {"ts": now_ts, "btc_dom": dom, "btc_price": market["btc_price"],
+    snap = {"ts": now_ts, "btc_price": market["btc_price"],
             "cats": {s["id"]: [s["mcap"], round(s["rel_24h"], 2)] for s in sectors},
             "chains": {r["name"]: r["score"] for r in chains},
             "coins": {c["id"]: round(c["rel_24h"], 2) for c in coins if c["rel_24h"] is not None},
@@ -1171,31 +973,20 @@ def main():
     data = {
         "updated": datetime.fromtimestamp(now_ts, timezone.utc).isoformat(),
         "mock": MOCK, "top_rank": TOP_RANK,
-        "btc": {"dom": dom, "dom_24h": dom - dom24 if dom24 is not None else None,
-                "dom_7d": dom7_delta, "price": market["btc_price"], "chg_24h": market["btc_24h"],
-                "eth_price": market.get("eth_price"), "eth_24h": market.get("eth_24h"),
-                "phase": phase_text(dom7_delta)},
-        "dom_series": [[s["ts"], round(s["btc_dom"], 3)] for s in hist[-24 * 7:]],
-        "fng": fng,
+        "btc": {"price": market["btc_price"], "chg_24h": market["btc_24h"], "chg_7d": market.get("btc_7d")},
+        "flow": flow,
         "coins": coins,
         "picks": picks,
-        "chains": chains,
-        "sectors": sectors,
-        "plan": plan,
         "deriv_source": dsrc,
         "warnings": warnings,
     }
     DOCS.mkdir(exist_ok=True)
     DATA_PATH.write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")))
-    if MOCK:
-        lt = mock_longterm(now_ts)
-    else:
+    if not MOCK:
         HIST_PATH.write_text(json.dumps(hist, separators=(",", ":")))
         META_PATH.parent.mkdir(exist_ok=True)
         META_PATH.write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
-        lt = update_longterm(load(LONG_PATH, {}), now_ts, dom, hist)
-    LONG_PATH.write_text(json.dumps(lt, separators=(",", ":")))
-    print(f"done: {DATA_PATH.name} / chains={len(chains)} sectors={len(sectors)} picks={picks} deriv={dsrc}")
+    print(f"done: {DATA_PATH.name} / coins={len(coins)} picks={picks} deriv={dsrc}")
 
 
 if __name__ == "__main__":
