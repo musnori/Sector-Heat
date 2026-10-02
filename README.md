@@ -63,7 +63,7 @@ ETH・SOL・BNBのようにチェーンの通貨であれば、そのチェー�
 
 ```bash
 pip install -r requirements.txt
-python scripts/fetch_data.py --mock      # サンプルデータを作る
+python scripts/fetch_data.py --mock      # サンプルデータを作る（手元で見た目を確認する用。サイトには載せません）
 python -m http.server -d docs 8000
 # ブラウザで http://localhost:8000/?mock を開く
 ```

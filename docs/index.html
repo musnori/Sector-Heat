@@ -210,7 +210,7 @@ const usd = v => v==null ? '—' : '$' + (v>=100 ? Math.round(v).toLocaleString(
 async function load(){
   if(window.__DATA__) return render(window.__DATA__);
   const q = new URLSearchParams(location.search).has('mock');
-  for(const f of q ? ['data.mock.json'] : ['data.json','data.mock.json']){
+  for(const f of q ? ['data.mock.json'] : ['data.json']){
     try{ const r = await fetch(`${f}?t=${Date.now()}`); if(r.ok) return render(await r.json()); }catch(e){}
   }
   $('#updated').textContent = '';
