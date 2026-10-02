@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main  # 手動実行を続けて押しても、待っている間に進んだ最新のmainから始める
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -31,5 +33,5 @@ jobs:
           git add docs/data.json docs/history.json docs/catcache.json cache/coin_meta.json
           git diff --staged --quiet || git commit -m "update data $(date -u +%Y-%m-%dT%H:%MZ)"
           # 実行中にmainが進んでいても（マージなど）押し込めるように取り込んでからpush
-          git pull --rebase origin main
+          git pull --rebase -X theirs origin main  # データがぶつかったら、今回取った新しい方を使う
           git push
