@@ -151,6 +151,32 @@ details.allsec summary{font-size:14px;margin-bottom:8px}
 .lc-tip b{font-family:var(--num);font-size:14px;font-weight:600;margin-left:6px}
 .lc-tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:1px}
 .go-long{font-size:13px;color:var(--muted);margin-left:8px}
+/* いまの見立て */
+.mpicks{display:grid;gap:14px}
+.pick{background:var(--surface);border-radius:10px;padding:16px 16px 12px;border-left:4px solid var(--pc)}
+.pick .hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.pick h3{margin:0;font-size:18px;font-weight:700;flex:1;min-width:0}
+.pick h3 .rk{font-size:12px;font-weight:400;color:var(--muted);margin-left:8px}
+.pick h3 a,.bn a{text-decoration:none;border-bottom:1px dotted var(--muted)}
+.pick .rel{font-size:26px;font-weight:600;color:var(--pc)}
+.st{font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;color:var(--bg);background:var(--pc);white-space:nowrap}
+.pick .act{margin:8px 0 4px;font-size:15px}
+.pick .meta{margin:0 0 10px;font-size:12px;color:var(--muted)}
+.schips{display:flex;flex-wrap:wrap;gap:6px}
+.schip{font-size:12px;border:1px solid var(--rule);border-radius:6px;padding:2px 8px;background:var(--bg)}
+.schip b{color:var(--pc);margin-left:6px;font-weight:700}
+.none{background:var(--surface);border-radius:10px;padding:14px 16px;font-size:14px;color:var(--muted)}
+.brow{display:grid;grid-template-columns:7.6em minmax(0,1fr) 5em 5.6em;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--rule);font-size:14px}
+.bs{font-size:11px;font-weight:700;color:var(--pc);border:1px solid currentColor;border-radius:999px;padding:1px 8px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bn{font-weight:700;min-width:0}
+.bn small{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+.bv{text-align:right;font-size:16px;font-weight:600}
+.bv small{display:block;font-family:var(--text);font-size:11px;font-weight:400;color:var(--muted)}
+.bf{text-align:right;font-size:12px;color:var(--muted)}
+.bf.hotfr{color:var(--hot);font-weight:700}
+details.board{margin-top:14px;background:none;padding:0}
+details.board summary{font-size:14px;margin-bottom:8px}
+@media (max-width:560px){.brow{grid-template-columns:7em minmax(0,1fr) 4.6em}.bf{grid-column:2/-1;text-align:left;margin-top:-4px}}
 .warn{background:var(--surface);border-left:3px solid var(--warm);padding:10px 14px;margin-top:18px;font-size:14px}
 details{margin-top:40px;background:var(--surface);padding:14px 16px;border-radius:8px;font-size:14px}
 summary{cursor:pointer;font-weight:700}
@@ -183,6 +209,12 @@ footer{margin-top:28px;color:var(--muted);font-size:12px}
       <dd>OIはドル建てなので、価格の上げ下げの影響を除いてから比べています。価格が上がってOIも増えていれば新しい買いが入っている、価格が動かないのにOIだけ急増していれば清算で急に動きやすい、という見方です。</dd>
       <dt>条件そろい</dt>
       <dd>温度60以上で、「静かに流入中」＋「上昇トレンド」＋「OIに危ないズレがない（急増・買い戻し主導でない）」＋「恐怖・強欲指数が75未満」を満たしたチェーンのうち、温度の高い上位3つです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
+      <dt>いまの見立て（上位銘柄の状態）</dt>
+      <dd>時価総額30位まで（ステーブル・ラップ系を除く）の銘柄に、関連セクターの局面と銘柄自身の動きから状態をつけています。出遅れ候補: 関連セクターが初動かトレンド中でBTC比+3%以上動いているのに、その銘柄はまだ2%以上遅れていて、FRも低い。過熱・追わない: 24時間でBTC比+8%以上か、FRが0.05%以上。それ以外は銘柄自身の動きで初動・トレンド中・様子見・失速・弱いに分けます。「いまの見立て」には出遅れ候補・初動・トレンド中を最大5つ出します。</dd>
+      <dt>銘柄の関連セクターの局面</dt>
+      <dd>初動: BTCより強くなって6時間以内。トレンド中: 6時間以上BTCより強い、または7日でも強い。過熱: 24時間でBTC比+8%以上か、上位銘柄の平均FRが0.05%以上。失速: 7日では強いのに今日はBTCより弱い。「Layer 1」「Ethereum Ecosystem」のような広すぎるカテゴリは使いません。</dd>
+      <dt>FRの単位</dt>
+      <dd>Hyperliquidは1時間ごとの資金調達なので、他の取引所と比べやすいよう8時間分に換算して表示しています。</dd>
       <dt>取引できるトークン</dt>
       <dd>そのチェーンのDeFiトークン（DefiLlama）とエコシステムの銘柄（CoinGecko）のうち、Hyperliquid（HL）かOstium（Ost）で取引できるものを出来高の多い順に最大8つ並べています。値動きと資金調達率はHyperliquidの値です。</dd>
       <dt>セクターの作戦</dt>
@@ -208,6 +240,10 @@ const ven = vs => (vs||[]).map(v=>`<span class="ven">${v==='HL'?'HL':'Ost'}</spa
 const vol = v => v==null ? '—' : v>=1e9 ? '$'+(v/1e9).toFixed(1)+'B' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+'M' : '$'+(v/1e3).toFixed(0)+'k';
 const pt = v => v==null ? '' : (v>0?'+':'') + v;
 const fr = v => v==null ? '—' : (v*100).toFixed(3) + '%';
+const SPC = {early:'var(--warm)', trend:'var(--good)', hot:'var(--hot)', fade:'var(--cold)', weak:'var(--cold)', flat:'var(--out)'};
+const ST_PC = {lag:'var(--good)', early:'var(--warm)', trend:'var(--good)', hot:'var(--hot)', flat:'var(--out)', fade:'var(--cold)', weak:'var(--cold)'};
+const symLink = c => c.hl ? `<a href="https://app.hyperliquid.xyz/trade/${encodeURIComponent(c.hl)}" target="_blank" rel="noopener">${esc(c.sym)}</a>` : esc(c.sym);
+const venTxt = c => (c.venues||[]).join(' / ') || 'HL・Ostiumになし';
 
 function spark(vals, color, w=300, h=64){
   const pts = vals.map((v,i)=>[i,v]).filter(p=>p[1]!=null);
@@ -240,6 +276,28 @@ function render(d){
         ${spark(f.series||[], fngColor(f.value), 300, 40)}
         <div class="cap">過去30日 ${f.d1==null?'':`<span class="num">前日比 ${pt(f.d1)}</span>`} ${f.d7==null?'':`<span class="num">・7日前比 ${pt(f.d7)}</span>`}</div></div>
       <p>${esc(f.text)}</p></div>`;
+  }
+
+  const coins = d.coins||[], cById = Object.fromEntries(coins.map(c=>[c.id,c]));
+  if(coins.length){
+    h += `<section><h2>いまの見立て</h2><p class="sub">時価総額${d.top_rank}位までの銘柄から、「出遅れ候補」「初動」「トレンド中」を最大5つ。数字は24時間のBTC比です。</p><div class="mpicks">`;
+    if(!(d.picks||[]).length) h += `<div class="none">上位${d.top_rank}位の中に、今チェックする価値がありそうな動きはありません。無理に探さなくていい時間帯です。</div>`;
+    for(const id of d.picks||[]){
+      const c = cById[id]; if(!c) continue;
+      h += `<article class="pick" style="--pc:${ST_PC[c.status]}">
+        <div class="hd"><span class="st">${esc(c.status_text)}</span><h3>${symLink(c)}<small class="rk">${c.rank}位</small></h3><span class="rel num" style="color:${(c.rel_24h??0)<0?'var(--cold)':'var(--pc)'}">${sp(c.rel_24h)}</span></div>
+        <p class="act">${esc(c.why)}</p>
+        <p class="meta">${[c.rel_7d!=null?`7日 BTC比 ${sp(c.rel_7d)}`:null, `FR ${fr(c.funding)}`, c.oi_24h!=null?`OI 24h ${sp(c.oi_24h)}`:null, venTxt(c)].filter(Boolean).map(esc).join('　')}</p>
+        <div class="schips">${(c.sectors||[]).map(s=>`<span class="schip" style="--pc:${SPC[s.phase]}">${esc(s.name)}<b>${esc(s.phase_text)}</b></span>`).join('')}</div></article>`;
+    }
+    h += `</div><details class="board"><summary>上位${d.top_rank}位の状態（${coins.length}銘柄）</summary><p class="sub">ステーブル・ラップ系を除いた銘柄。数字は24時間のBTC比です。名前をタップするとHyperliquidの取引画面が開きます。</p>`;
+    for(const c of coins){
+      h += `<div class="brow"><span class="bs" style="--pc:${ST_PC[c.status]}">${esc(c.status_text)}</span>
+        <span class="bn">${symLink(c)}<small>${c.rank}位 ・ ${esc(venTxt(c))}</small></span>
+        <span class="bv num">${sp(c.rel_24h)}<small>7日 ${sp(c.rel_7d)}</small></span>
+        <span class="bf${c.funding!=null&&c.funding>=0.0005?' hotfr':''}">FR ${fr(c.funding)}</span></div>`;
+    }
+    h += `</details></section>`;
   }
 
   h += `<section><h2>チェーンの温度</h2><p class="sub">お金が入ってきていて、まだ過熱していない所ほど上に来ます。先物: ${esc(d.deriv_source||'取得できず')}</p>`;
