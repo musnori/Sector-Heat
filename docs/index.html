@@ -52,15 +52,7 @@ h2{font-size:16px;font-weight:700;margin:0 0 4px}
 .sub{font-size:13px;color:var(--muted);margin:0}
 
 /* 資金の流れ */
-.flow .head{font-size:18px;font-weight:600;line-height:1.6;margin:8px 0 16px}
-.fcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 32px}
-.fcol h3{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px;letter-spacing:.04em}
-.frow{display:grid;grid-template-columns:minmax(0,1fr) 88px 52px;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--grid);font-size:14px}
-.frow .nm{min-width:0}
-.frow .nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.frow .nm small{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.frow .v{text-align:right;font-weight:600}
-.fnone{padding:7px 0;border-top:1px solid var(--grid);font-size:13px;color:var(--muted)}
+.flow .head{font-size:18px;font-weight:600;line-height:1.6;margin:8px 0 0}
 .picks{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--grid);font-size:13px;align-items:center}
 .picks .k{color:var(--muted);margin-right:2px}
 .tag{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;background:var(--good-bg);color:var(--good-ink);text-decoration:none}
@@ -149,7 +141,6 @@ footer{margin-top:20px;color:var(--muted);font-size:12px}
   .panel{padding:16px}
   .list{padding:14px 0 0}
   .flow .head{font-size:16px}
-  .fcols{grid-template-columns:1fr}
   .lhead{padding:0 16px 10px}
   .cols{display:none}
   .row>summary{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"coin price" "st rel";gap:8px 12px;padding:12px 16px}
@@ -173,7 +164,7 @@ footer{margin-top:20px;color:var(--muted);font-size:12px}
     <summary>見方</summary>
     <dl>
       <dt>今の資金の流れ</dt>
-      <dd>上位銘柄の24時間のBTC比で、+1%以上の銘柄を「強い」、-1%以下を「抜けている」としています。セクターは、上位銘柄が属するカテゴリ（CoinGecko）のうち、初動・トレンド中・過熱で対BTCがプラスのものを「向かっている」、失速・弱いでマイナスのものを「抜けている」として並べています。建玉が価格の影響を除いて+5%以上増えながら上がっている銘柄は「新しい買いを伴っている」と書きます。</dd>
+      <dd>上位銘柄の24時間のBTC比で、+1%以上の銘柄に「資金が向かっている」、-1%以下の銘柄から「抜けている」としています。建玉が価格の影響を除いて+5%以上増えながら上がっている銘柄は「新しい買いを伴っている」と書きます。</dd>
       <dt>上位20銘柄の表</dt>
       <dd>HyperliquidかOstiumで取引できる銘柄を、時価総額の大きい順に20個（BTC・ステーブル・ラップ系を除く）。左の数字はCoinGeckoの時価総額順位です。価格と24時間の値動き（CoinGecko）、48時間の価格の線、BTC比（中央の線より右がBTCより強い）、7日のBTC比、資金調達率(FR)、建玉(OI)の24時間変化、状態を並べています。行をタップすると、トレンド・OIと価格のズレ・関連セクター・チェーンの資金の流れなどの詳しい情報が開きます。</dd>
       <dt>銘柄の状態</dt>
@@ -241,16 +232,10 @@ const SORTS = {
 function flowHtml(d){
   const f = d.flow, coins = d.coins||[];
   if(!f) return '';
-  const max = Math.max(3, ...[...f.in_secs, ...f.out_secs].map(s=>Math.abs(s.rel_24h)));
-  const row = s => `<div class="frow"><div class="nm"><b>${esc(s.name)}</b><small>${esc(s.phase_text)} ・ ${esc(s.syms.join(', '))}</small></div>${dbar(s.rel_24h, max)}<span class="v tn">${pc(s.rel_24h)}</span></div>`;
   const ent = coins.filter(c=>c.entry);
   return `<section class="panel flow" aria-labelledby="h-flow">
-    <h2 id="h-flow">今の資金の流れ</h2><p class="sub">上位${(d.coins||[]).length}銘柄とその関連セクター、24時間のBTC比</p>
-    <p class="head">${esc(f.text)}</p>
-    <div class="fcols">
-      <div class="fcol"><h3>資金が向かっているセクター</h3>${f.in_secs.map(row).join('') || '<div class="fnone">なし</div>'}</div>
-      <div class="fcol"><h3>資金が抜けているセクター</h3>${f.out_secs.map(row).join('') || '<div class="fnone">なし</div>'}</div>
-    </div>
+    <h2 id="h-flow">今の資金の流れ</h2><p class="sub">上位${(d.coins||[]).length}銘柄の24時間のBTC比から</p>
+    <p class="head">${esc(f.text).replace(/。\s*/g, '。<br>').replace(/<br>$/, '')}</p>
     <div class="picks"><span class="k">条件そろい</span>${ent.length ? ent.map(c=>`<a class="tag" href="#c-${esc(c.id)}">◎ ${esc(c.sym)}</a>`).join('') : '<span class="ink2">今はなし</span>'}</div>
   </section>`;
 }
