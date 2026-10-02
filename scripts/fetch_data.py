@@ -91,8 +91,7 @@ EXCLUDE_CAT = ["portfolio", "holdings", "index", "launchpool", "launchpad", "all
 LAG_MIN_SECTOR = 3.0   # 「出遅れ候補」にするのは、関連セクターがBTC比+3%以上動いているときだけ
 PICKS_MAX = 5          # 「いまの見立て」に出す銘柄数
 COIN_ENTRY_MAX = 3     # 銘柄の「条件そろい」は並び順で最大この件数まで
-FLOW_MOVE = 1.0        # 「資金の流れ」で、BTC比がこれ以上動いた銘柄を「強い／抜けている」とする
-FLOW_SECS = 3          # 「資金の流れ」に出すセクターの数
+FLOW_MOVE = 1.0        # 「資金の流れ」で、BTC比がこれ以上動いた銘柄を「向かっている／抜けている」とする
 PHASES = {"early": "初動", "trend": "トレンド中", "hot": "過熱", "fade": "失速", "weak": "弱い", "flat": "横ばい"}
 PHASE_RANK = {"early": 0, "trend": 1, "hot": 2, "flat": 3, "fade": 4, "weak": 5}
 STATUS = {  # 上位銘柄ごとの「いまの状態」（表示名, 並び順）
@@ -750,26 +749,18 @@ def enrich_coins(coins, prices, chains, hist):
             co["entry"] = n <= COIN_ENTRY_MAX
 
 
-def build_flow(coins, secs, m):
-    """上位銘柄とその関連セクターから「今どこに資金が向かっているか」をまとめる"""
+def build_flow(coins, m):
+    """上位銘柄のBTC比から「今どこに資金が向かっているか」をまとめる"""
     for co in coins:  # 24時間の時価総額の増減（ドル）
         c24, mc = co["chg_24h"], co.get("mcap")
         co["mcap_chg"] = mc * c24 / (100 + c24) if (c24 is not None and mc) else None
     by_rel = sorted([c for c in coins if c["rel_24h"] is not None], key=lambda c: -c["rel_24h"])
     ins = [c for c in by_rel if c["rel_24h"] >= FLOW_MOVE]
     outs = [c for c in reversed(by_rel) if c["rel_24h"] <= -FLOW_MOVE]
-    members = {n: [c["sym"] for c in by_rel if n in c["cats"]] for n in secs}
-    sec_rows = [{**s, "syms": members[n]} for n, s in secs.items() if members[n]]
-    in_secs = sorted([s for s in sec_rows if s["phase"] in ("early", "trend", "hot") and s["rel_24h"] > 0],
-                     key=lambda s: -s["rel_24h"])[:FLOW_SECS]
-    out_secs = sorted([s for s in sec_rows if s["phase"] in ("fade", "weak") and s["rel_24h"] < 0],
-                      key=lambda s: s["rel_24h"])[:FLOW_SECS]
     new_money = [c["sym"] for c in by_rel if (c.get("oi_real") or 0) >= OI_MOVE and c["rel_24h"] > 0]
     names = lambda xs: "・".join(xs)  # noqa: E731
     if ins:
-        text = f"BTCより強いのは {names([c['sym'] for c in ins[:5]])}。"
-        if in_secs:
-            text += f"資金は{names([s['name'] for s in in_secs])}に向かっています。"
+        text = f"資金は {names([c['sym'] for c in ins[:5]])} に向かっています（BTCより強い）。"
     elif len(outs) >= len(coins) / 2 and (m.get("btc_24h") or 0) > 0:
         text = "BTCだけが強く、アルトから資金が抜けています。BTCに集まっている時間帯です。"
     else:
@@ -779,7 +770,7 @@ def build_flow(coins, secs, m):
     if outs:
         text += f" 抜けているのは {names([c['sym'] for c in outs[:4]])}。"
     return {"text": text.strip(), "in": [c["sym"] for c in ins], "out": [c["sym"] for c in outs],
-            "in_secs": in_secs, "out_secs": out_secs, "new_money": new_money}
+            "new_money": new_money}
 
 
 # ---------- サンプルデータ ----------
@@ -964,7 +955,7 @@ def main():
     sectors = build_sectors(market, hist, now_ts)
     print("上位銘柄...")
     coins = build_coins(market, meta, tradable, hist, now_ts)
-    picks, secs = judge_coins(coins, sectors)
+    picks, _ = judge_coins(coins, sectors)
     shown = [r for r in chains if r["symbol"] in {c["sym"] for c in coins}]  # 上位銘柄がそのチェーンの通貨のものだけ
     if not MOCK:
         print("取引できるトークン...")
@@ -975,7 +966,7 @@ def main():
         r["tokens"] = tokens.get(r["name"], [])
     cache.save()
     enrich_coins(coins, prices, chains, hist)
-    flow = build_flow(coins, secs, market)
+    flow = build_flow(coins, market)
 
     snap = {"ts": now_ts, "btc_price": market["btc_price"],
             "cats": {s["id"]: [s["mcap"], round(s["rel_24h"], 2)] for s in sectors},
