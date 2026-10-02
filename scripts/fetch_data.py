@@ -645,27 +645,47 @@ def select_top(m, meta, tradable):
     return out
 
 
+def coin_entry(c, m, meta, tradable, hist, now_ts):
+    rank = c.get("market_cap_rank") or 999
+    sym = c["symbol"].upper()
+    t = tradable.get(sym) or {"venues": []}
+    c24 = c.get("price_change_percentage_24h_in_currency")
+    c7 = c.get("price_change_percentage_7d_in_currency")
+    is_btc = c["id"] == "bitcoin"
+    rel24 = (c24 - m["btc_24h"]) if (c24 is not None and not is_btc) else None
+    rel7 = (c7 - m["btc_7d"]) if (c7 is not None and m.get("btc_7d") is not None and not is_btc) else None
+    cid = c["id"]
+    streak_h = streak_hours(hist, lambda s: s["coins"][cid], now_ts) if (rel24 or 0) > 0 else 0
+    return {
+        "id": cid, "sym": sym, "name": c.get("name"), "rank": rank,
+        "price": c.get("current_price"), "mcap": c.get("market_cap"), "vol": c.get("total_volume"),
+        "chg_24h": c24, "chg_7d": c7, "rel_24h": rel24, "rel_7d": rel7, "streak_h": streak_h,
+        "venues": t["venues"], "hl": t.get("hl"), "funding": t.get("fr8h"), "oi": t.get("oi_usd"),
+        "oi_24h": pct(t.get("oi_usd"), oi_24h_ago(hist, sym, now_ts)) if t.get("oi_usd") else None,
+        "max_lev": t.get("max_lev"), "cats": meta.get(cid, {}).get("cats", []),
+    }
+
+
 def build_coins(m, meta, tradable, hist, now_ts):
-    coins = []
-    for c in select_top(m, meta, tradable):
-        rank = c.get("market_cap_rank") or 999
-        sym = c["symbol"].upper()
-        t = tradable.get(sym) or {"venues": []}
-        c24 = c.get("price_change_percentage_24h_in_currency")
-        c7 = c.get("price_change_percentage_7d_in_currency")
-        rel24 = (c24 - m["btc_24h"]) if c24 is not None else None
-        rel7 = (c7 - m["btc_7d"]) if (c7 is not None and m.get("btc_7d") is not None) else None
-        cid = c["id"]
-        streak_h = streak_hours(hist, lambda s: s["coins"][cid], now_ts) if (rel24 or 0) > 0 else 0
-        coins.append({
-            "id": cid, "sym": sym, "name": c.get("name"), "rank": rank,
-            "price": c.get("current_price"), "mcap": c.get("market_cap"), "vol": c.get("total_volume"),
-            "chg_24h": c24, "chg_7d": c7, "rel_24h": rel24, "rel_7d": rel7, "streak_h": streak_h,
-            "venues": t["venues"], "hl": t.get("hl"), "funding": t.get("fr8h"), "oi": t.get("oi_usd"),
-            "oi_24h": pct(t.get("oi_usd"), oi_24h_ago(hist, sym, now_ts)) if t.get("oi_usd") else None,
-            "max_lev": t.get("max_lev"), "cats": meta.get(cid, {}).get("cats", []),
-        })
-    return coins
+    return [coin_entry(c, m, meta, tradable, hist, now_ts) for c in select_top(m, meta, tradable)]
+
+
+def build_btc(m, tradable, hist, now_ts):
+    """比較の基準のBTCも、同じ指標で1行にする"""
+    c = next(c for c in m["top"] if c["id"] == "bitcoin")
+    b = coin_entry(c, m, {}, tradable, hist, now_ts)
+    b.update({"status": "base", "status_text": "比較の基準", "sectors": [], "why": ""})
+    return b
+
+
+def btc_why(b):
+    parts = []
+    if b.get("trend"):
+        parts.append({"up": "4時間足は上昇トレンド", "down": "4時間足は下落トレンド", "range": "4時間足はもみ合い"}[b["trend"]]
+                     + (f"（7日線比{b['vs_ma7']:+.1f}%）。" if b.get("vs_ma7") is not None else "。"))
+    if b.get("div_text") and b["div"] != "flat":
+        parts.append(f"建玉: {b['div_text']}。")
+    return "アルトはこのBTCと比べています。" + "".join(parts)
 
 
 def coin_sectors(sectors, coins):
@@ -832,8 +852,10 @@ def mock_all(now_ts):
                      "coins": {cid: (1.0 if sym in ("AAVE", "DOGE", "ONDO") and h <= 12 else -0.3)
                                for cid, sym, _, _ in MOCK_COINS},
                      "cpx": {cid: 100 * (1 + MOCK_COIN_CHG.get(sym, 0) / 100 * (48 - min(h, 48)) / 48
-                                         + math.sin(h / 4 + rank) * 0.01) for cid, sym, rank, _ in MOCK_COINS}})
+                                         + math.sin(h / 4 + rank) * 0.01) for cid, sym, rank, _ in MOCK_COINS}
+                            | {"bitcoin": 113400 * (1 - 0.012 * min(h, 24) / 24 + math.sin(h / 5) * 0.004)}})
     top = [{"id": "bitcoin", "symbol": "btc", "name": "Bitcoin", "market_cap_rank": 1, "current_price": 113400,
+            "market_cap": 2.25e12, "total_volume": 4.1e10,
             "price_change_percentage_24h_in_currency": 1.2, "price_change_percentage_7d_in_currency": -0.8}]
     for cid, sym, rank, _ in MOCK_COINS:
         c24 = MOCK_COIN_CHG.get(sym, -1.2) + 1.2
@@ -867,7 +889,7 @@ def mock_all(now_ts):
     tradable = {x: {"venues": ["HL"] + (["Ostium"] if x in ("BTC", "ETH", "SOL", "XRP", "LINK") else []),
                     "chg_24h": random.uniform(-9, 14), "fr8h": random.choice([-0.0001, 0.00005, 0.0001, 0.0003, 0.0008]),
                     "vol": random.uniform(2e6, 8e8)} for x in syms}
-    for _, sym, _, _ in MOCK_COINS:
+    for _, sym, _, _ in [("bitcoin", "BTC", 1, [])] + MOCK_COINS:
         if sym in ("USDT", "USDC", "STETH", "WBTC", "USDE"):
             continue
         t = tradable.setdefault(sym, {"venues": ["HL"], "chg_24h": MOCK_COIN_CHG.get(sym, 0) + 1.2,
@@ -939,7 +961,7 @@ def main():
         if not derivs:
             warnings.append("先物データを取れませんでした。FRとOIなしで計算しています。")
         print("価格...")
-        prices = fetch_prices(list(dict.fromkeys(top_symbols(market, meta, tradable)
+        prices = fetch_prices(list(dict.fromkeys(["BTC"] + top_symbols(market, meta, tradable)
                                                  + [r["symbol"] for r in chains if r["symbol"]])), tradable)
         if not prices:
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
@@ -965,22 +987,24 @@ def main():
     for r in chains:
         r["tokens"] = tokens.get(r["name"], [])
     cache.save()
-    enrich_coins(coins, prices, chains, hist)
+    btc = build_btc(market, tradable, hist, now_ts)
+    enrich_coins([btc] + coins, prices, chains, hist)
+    btc["why"] = btc_why(btc)
     flow = build_flow(coins, market)
 
     snap = {"ts": now_ts, "btc_price": market["btc_price"],
             "cats": {s["id"]: [s["mcap"], round(s["rel_24h"], 2)] for s in sectors},
             "chains": {r["name"]: r["score"] for r in chains},
             "coins": {c["id"]: round(c["rel_24h"], 2) for c in coins if c["rel_24h"] is not None},
-            "cpx": {c["id"]: c["price"] for c in coins if c["price"]},
+            "cpx": {c["id"]: c["price"] for c in [btc] + coins if c["price"]},
             # Hyperliquidの建玉（24時間前との比較用。古いものは消す）
             "oi": {k: round(v["oi_usd"]) for k, v in tradable.items()
-                   if v.get("oi_usd") and (k in derivs or any(c["sym"] == k for c in coins))}}
+                   if v.get("oi_usd") and (k in derivs or k == "BTC" or any(c["sym"] == k for c in coins))}}
     hist = (hist + [snap])[-HIST_MAX:]
     for s in hist:
         if s["ts"] < now_ts - 26 * 3600:
             s.pop("oi", None)
-    for c in coins:
+    for c in [btc] + coins:
         c.pop("cats", None)
         c.pop("oi", None)
 
@@ -988,6 +1012,7 @@ def main():
         "updated": datetime.fromtimestamp(now_ts, timezone.utc).isoformat(),
         "mock": MOCK, "top_rank": TOP_RANK,
         "btc": {"price": market["btc_price"], "chg_24h": market["btc_24h"], "chg_7d": market.get("btc_7d")},
+        "base": btc,
         "flow": flow,
         "coins": coins,
         "picks": picks,
