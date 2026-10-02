@@ -88,20 +88,19 @@ EXCLUDE_CAT = ["portfolio", "holdings", "index", "launchpool", "launchpad", "all
                # 広すぎて「どこに資金が回っているか」が分からないカテゴリ
                "layer 1 (l1)", "smart contract platform", "proof of work", "proof of stake",
                "layer 0", "ethereum ecosystem", "coinbase", "gmci", "fan token"]
-LAG_MIN_SECTOR = 3.0   # 「出遅れ候補」にするのは、関連セクターがBTC比+3%以上動いているときだけ
-PICKS_MAX = 5          # 「いまの見立て」に出す銘柄数
 COIN_ENTRY_MAX = 3     # 銘柄の「条件そろい」は並び順で最大この件数まで
-FLOW_MOVE = 1.0        # 「資金の流れ」で、BTC比がこれ以上動いた銘柄を「向かっている／抜けている」とする
-PHASES = {"early": "初動", "trend": "トレンド中", "hot": "過熱", "fade": "失速", "weak": "弱い", "flat": "横ばい"}
-PHASE_RANK = {"early": 0, "trend": 1, "hot": 2, "flat": 3, "fade": 4, "weak": 5}
-STATUS = {  # 上位銘柄ごとの「いまの状態」（表示名, 並び順）
-    "lag":   ("出遅れ候補", 0),
-    "early": ("初動", 1),
-    "trend": ("トレンド中", 2),
-    "hot":   ("過熱・追わない", 3),
-    "flat":  ("様子見", 4),
-    "fade":  ("失速", 5),
-    "weak":  ("弱い", 6),
+HOT_MOVE = 10.0        # 24時間でこれ以上（%）上がったら「過熱」
+EARLY_MOVE = 2.0       # 下落・もみ合いから7日線を上抜けて、24時間でこれ以上上がったら「初動」
+DIP_MOVE = -2.0        # 上昇トレンド中に24時間でこれ以下なら「押し目」
+FLOW_MOVE = 2.0        # 「資金の流れ」で、24時間でこれ以上動いた銘柄を「入っている／抜けている」とする
+SECTOR_CHIPS = 4       # 詳細に出す関連セクターの数
+STATUS = {  # 銘柄ごとの「いまの状態」（表示名, 並び順）
+    "strong": ("強い", 0),
+    "early":  ("初動", 1),
+    "dip":    ("押し目", 2),
+    "hot":    ("過熱", 3),
+    "flat":   ("様子見", 4),
+    "weak":   ("弱い", 5),
 }
 
 
@@ -182,17 +181,6 @@ def hist_value(hist, getter, days, now_ts):
     return value_days_ago([(s["ts"], quiet(getter, s)) for s in hist], days, now_ts)
 
 
-def streak_hours(hist, getter, now_ts):
-    """何時間前からBTCを上回り続けているか（更新間隔がばらついても時間で数える）"""
-    since = now_ts
-    for s in reversed(hist):
-        v = quiet(getter, s)
-        if v is None or v <= 0:
-            break
-        since = s["ts"]
-    return round((now_ts - since) / 3600)
-
-
 # ---------- CoinGecko ----------
 def cg(path, params=None):
     headers = {"x-cg-demo-api-key": CG_KEY} if CG_KEY else {}
@@ -213,7 +201,7 @@ def fetch_market():
 
 def refresh_meta(top, meta, now_ts):
     """銘柄ごとのカテゴリ（どのセクターに属するか）をキャッシュ。古いものだけ取り直す"""
-    stale = [c["id"] for c in top if (c.get("market_cap_rank") or 999) <= TOP_RANK * 2 + 10 and c["id"] != "bitcoin"
+    stale = [c["id"] for c in top if (c.get("market_cap_rank") or 999) <= TOP_RANK * 2 + 10
              and now_ts - meta.get(c["id"], {}).get("ts", 0) > META_REFRESH_DAYS * 86400]
     for cid in stale[:META_PER_RUN]:
         d = safe(lambda: cg(f"/coins/{cid}", {"localization": "false", "tickers": "false",
@@ -587,43 +575,7 @@ def score_chains(rows):
     rows.sort(key=lambda r: -1 if r["score"] is None else r["score"], reverse=True)
 
 
-def build_sectors(m, hist, now_ts):
-    cats = [c for c in m["cats"]
-            if (c.get("market_cap") or 0) >= MIN_CAT_MCAP and c.get("market_cap_change_24h") is not None]
-    cats = sorted(cats, key=lambda c: -c["market_cap"])[:MAX_CATS]
-    btc7 = pct(m["btc_price"], hist_value(hist, lambda s: s["btc_price"], 7, now_ts))
-    out = []
-    for c in cats:
-        cid = c["id"]
-        rel24 = c["market_cap_change_24h"] - m["btc_24h"]
-        c7 = pct(c["market_cap"], hist_value(hist, lambda s: s["cats"][cid][0], 7, now_ts))
-        streak_h = streak_hours(hist, lambda s: s["cats"][cid][1], now_ts) if rel24 > 0 else 0
-        out.append({
-            "id": cid, "name": c["name"], "mcap": c["market_cap"],
-            "chg_24h": c["market_cap_change_24h"], "rel_24h": rel24,
-            "rel_7d": (c7 - btc7) if (c7 is not None and btc7 is not None) else None,
-            "streak_h": streak_h, "top": (c.get("top_3_coins_id") or [])[:3],
-        })
-    out.sort(key=lambda x: x["rel_24h"], reverse=True)
-    return out
-
-
-# ---------- いまの見立て（上位銘柄とその関連セクター） ----------
-def trend_phase(r24, r7, streak_h, fr):
-    """BTC比の動きから局面を決める。セクターにも銘柄にも使う"""
-    if r24 >= 8 or (fr is not None and fr >= FR_HOT):
-        return "hot"
-    if r24 > 1.5 and streak_h <= 6 and (r7 is None or r7 < 5):
-        return "early"
-    if r24 > 0 and (streak_h > 6 or (r7 is not None and r7 >= 5)):
-        return "trend"
-    if r24 < 0 and r7 is not None and r7 > 2:
-        return "fade"
-    if r24 < -1.5:
-        return "weak"
-    return "flat"
-
-
+# ---------- 上位銘柄 ----------
 def is_tradable_coin(c, meta):
     sym = (c.get("symbol") or "").upper()
     if sym in NOT_TRADABLE_SYM or sym.startswith("USD"):
@@ -633,11 +585,11 @@ def is_tradable_coin(c, meta):
 
 
 def select_top(m, meta, tradable):
-    """HyperliquidかOstiumで取引できる銘柄を、時価総額の上から TOP_RANK 個"""
+    """HyperliquidかOstiumで取引できる銘柄を、時価総額の上から TOP_RANK 個（BTCも含む）"""
     out = []
     for c in sorted(m["top"], key=lambda c: c.get("market_cap_rank") or 999):
         sym = (c.get("symbol") or "").upper()
-        if c["id"] == "bitcoin" or not is_tradable_coin(c, meta) or not (tradable.get(sym) or {}).get("venues"):
+        if not is_tradable_coin(c, meta) or not (tradable.get(sym) or {}).get("venues"):
             continue
         out.append(c)
         if len(out) >= TOP_RANK:
@@ -645,111 +597,40 @@ def select_top(m, meta, tradable):
     return out
 
 
-def coin_entry(c, m, meta, tradable, hist, now_ts):
-    rank = c.get("market_cap_rank") or 999
-    sym = c["symbol"].upper()
-    t = tradable.get(sym) or {"venues": []}
-    c24 = c.get("price_change_percentage_24h_in_currency")
-    c7 = c.get("price_change_percentage_7d_in_currency")
-    is_btc = c["id"] == "bitcoin"
-    rel24 = (c24 - m["btc_24h"]) if (c24 is not None and not is_btc) else None
-    rel7 = (c7 - m["btc_7d"]) if (c7 is not None and m.get("btc_7d") is not None and not is_btc) else None
-    cid = c["id"]
-    streak_h = streak_hours(hist, lambda s: s["coins"][cid], now_ts) if (rel24 or 0) > 0 else 0
-    return {
-        "id": cid, "sym": sym, "name": c.get("name"), "rank": rank,
-        "price": c.get("current_price"), "mcap": c.get("market_cap"), "vol": c.get("total_volume"),
-        "chg_24h": c24, "chg_7d": c7, "rel_24h": rel24, "rel_7d": rel7, "streak_h": streak_h,
-        "venues": t["venues"], "hl": t.get("hl"), "funding": t.get("fr8h"), "oi": t.get("oi_usd"),
-        "oi_24h": pct(t.get("oi_usd"), oi_24h_ago(hist, sym, now_ts)) if t.get("oi_usd") else None,
-        "max_lev": t.get("max_lev"), "cats": meta.get(cid, {}).get("cats", []),
-    }
-
-
-def build_coins(m, meta, tradable, hist, now_ts):
-    return [coin_entry(c, m, meta, tradable, hist, now_ts) for c in select_top(m, meta, tradable)]
-
-
-def build_btc(m, tradable, hist, now_ts):
-    """比較の基準のBTCも、同じ指標で1行にする"""
-    c = next(c for c in m["top"] if c["id"] == "bitcoin")
-    b = coin_entry(c, m, {}, tradable, hist, now_ts)
-    b.update({"status": "base", "status_text": "比較の基準", "sectors": [], "why": ""})
-    return b
-
-
-def btc_why(b):
-    parts = []
-    if b.get("trend"):
-        parts.append({"up": "4時間足は上昇トレンド", "down": "4時間足は下落トレンド", "range": "4時間足はもみ合い"}[b["trend"]]
-                     + (f"（7日線比{b['vs_ma7']:+.1f}%）。" if b.get("vs_ma7") is not None else "。"))
-    if b.get("div_text") and b["div"] != "flat":
-        parts.append(f"建玉: {b['div_text']}。")
-    return "アルトはこのBTCと比べています。" + "".join(parts)
-
-
-def coin_sectors(sectors, coins):
-    """上位銘柄が属するセクターごとに局面をつける（銘柄のFRの平均も見る）"""
-    names = {n for co in coins for n in co["cats"]}
-    out = {}
-    for s in sectors:
-        if s["name"] not in names or any(k in s["name"].lower() for k in EXCLUDE_CAT):
-            continue
-        frs = [co["funding"] for co in coins if s["name"] in co["cats"] and co["funding"] is not None]
-        ph = trend_phase(s["rel_24h"], s["rel_7d"], s["streak_h"], sum(frs) / len(frs) if frs else None)
-        out[s["name"]] = {"id": s["id"], "name": s["name"], "phase": ph, "phase_text": PHASES[ph],
-                          "rel_24h": s["rel_24h"]}
-    return out
-
-
-def judge_coins(coins, sectors):
-    """各上位銘柄に、関連セクターの局面と自分の動きから「いまの状態」と理由をつける"""
-    secs = coin_sectors(sectors, coins)
-    for co in coins:
-        rel = sorted([secs[n] for n in co["cats"] if n in secs], key=lambda s: (PHASE_RANK[s["phase"]], -s["rel_24h"]))
-        co["sectors"] = rel[:4]
-        r24 = co["rel_24h"] or 0
-        own = trend_phase(r24, co["rel_7d"], co["streak_h"], co["funding"])
-        best = rel[0] if rel else None
-        calm = co["funding"] is None or co["funding"] < FR_CALM
-        if own == "hot":
-            st = "hot"
-            why = ("FRが高く、ロングが混んでいます。" if (co["funding"] or 0) >= FR_HOT
-                   else f"24時間でBTCより{r24:+.1f}%と大きく上がっています。")
-        elif (best and best["phase"] in ("early", "trend") and best["rel_24h"] >= LAG_MIN_SECTOR
-              and r24 < best["rel_24h"] - 2 and calm):
-            st = "lag"
-            why = (f"{best['name']}が{best['phase_text']}（BTC比{best['rel_24h']:+.1f}%）なのに、"
-                   f"{co['sym']}はBTC比{r24:+.1f}%でまだ追いついていません。FRも低めです。")
-        elif own in ("early", "trend"):
-            st = own
-            if co["streak_h"] >= 2:
-                why = f"BTCより強い状態が{co['streak_h']}時間続いています。"
-            elif co["rel_7d"] is not None and co["rel_7d"] >= 5:
-                why = f"7日で見てもBTC比{co['rel_7d']:+.1f}%と強い流れです。"
-            else:
-                why = "今日になってBTCより強くなりました。"
-            if best:
-                why += f"関連: {best['name']}（{best['phase_text']}）。"
-        else:
-            st = own
-            why = {"fade": "7日では強かったのに、今日はBTCより弱くなっています。",
-                   "weak": "BTCより弱く、資金が来ていません。",
-                   "flat": "BTCとほぼ同じ動きです。"}.get(own, "")
-            if best and best["phase"] in ("early", "trend"):
-                why += f"ただし{best['name']}は{best['phase_text']}です。"
-        co["status"], co["status_text"], co["why"] = st, STATUS[st][0], why
-    coins.sort(key=lambda c: (STATUS[c["status"]][1], c["rank"]))
-    return [c["id"] for c in coins if c["status"] in ("lag", "early", "trend")][:PICKS_MAX], secs
-
-
 def top_symbols(m, meta, tradable):
     """先にトレンド用の価格を取るため、監視する銘柄のシンボルだけ出す"""
     return [c["symbol"].upper() for c in select_top(m, meta, tradable)]
 
 
+def coin_sectors(c, meta, cats):
+    """その銘柄が属するセクター（CoinGeckoのカテゴリ）と、セクター全体の24時間の時価総額の変化"""
+    by_name = {x["name"]: x for x in cats if (x.get("market_cap") or 0) >= MIN_CAT_MCAP
+               and x.get("market_cap_change_24h") is not None}
+    rows = [by_name[n] for n in meta.get(c["id"], {}).get("cats", [])
+            if n in by_name and not any(k in n.lower() for k in EXCLUDE_CAT)]
+    rows.sort(key=lambda x: -x["market_cap"])
+    return [{"name": x["name"], "chg_24h": x["market_cap_change_24h"]} for x in rows[:SECTOR_CHIPS]]
+
+
+def build_coins(m, meta, tradable, hist, now_ts):
+    coins = []
+    for c in select_top(m, meta, tradable):
+        sym = c["symbol"].upper()
+        t = tradable.get(sym) or {"venues": []}
+        coins.append({
+            "id": c["id"], "sym": sym, "name": c.get("name"), "rank": c.get("market_cap_rank") or 999,
+            "price": c.get("current_price"), "mcap": c.get("market_cap"), "vol": c.get("total_volume"),
+            "chg_24h": c.get("price_change_percentage_24h_in_currency"),
+            "chg_7d": c.get("price_change_percentage_7d_in_currency"),
+            "venues": t["venues"], "hl": t.get("hl"), "funding": t.get("fr8h"), "oi": t.get("oi_usd"),
+            "oi_24h": pct(t.get("oi_usd"), oi_24h_ago(hist, sym, now_ts)) if t.get("oi_usd") else None,
+            "max_lev": t.get("max_lev"), "sectors": coin_sectors(c, meta, m["cats"]),
+        })
+    return coins
+
+
 def enrich_coins(coins, prices, chains, hist):
-    """銘柄ごとに、価格トレンド・OIのズレ・チェーンの資金の指標・条件そろいをまとめる"""
+    """銘柄ごとに、価格トレンド・OIのズレ・チェーンの資金の指標・48時間の価格をまとめる"""
     chain_by_sym = {r["symbol"]: r for r in chains if r.get("symbol")}
     for co in coins:
         p = prices.get(co["sym"], {})
@@ -760,36 +641,81 @@ def enrich_coins(coins, prices, chains, hist):
         co["chain"] = ({k: ch.get(k) for k in ("name", "score", "label", "label_text", "stable_7d", "dex_7d",
                                                 "tvl_7d", "tokens")} if ch else None)
         co["px_series"] = [quiet(lambda s: s["cpx"][co["id"]], s) for s in hist[-47:]] + [co["price"]]
-        co["entry"] = (co["status"] in ("lag", "early", "trend") and co["trend"] == "up"
-                       and co["div"] not in ("warn", "weak"))
+
+
+def judge(co):
+    """その銘柄自身の指標（トレンド・値動き・FR）だけで状態を決める"""
+    c24, c7, tr, m7, fr = co["chg_24h"] or 0, co["chg_7d"], co["trend"], co["vs_ma7"], co["funding"]
+    if c24 >= HOT_MOVE or (fr is not None and fr >= FR_HOT):
+        return "hot"
+    if tr == "up":
+        return "dip" if (c24 <= DIP_MOVE or (m7 is not None and m7 < 0)) else "strong"
+    if tr is None:  # 4時間足が取れないときは値動きだけで
+        if c7 is not None and c7 >= 5 and c24 > 0:
+            return "strong"
+        if c7 is not None and c7 <= -5 and c24 < 0:
+            return "weak"
+        return "flat"
+    if (m7 or 0) > 0 and c24 >= EARLY_MOVE:
+        return "early"
+    if tr == "down" and (m7 is None or m7 < 0):
+        return "weak"
+    return "flat"
+
+
+def why_text(co):
+    tr = {"up": "4時間足は上昇トレンド", "down": "4時間足は下落トレンド", "range": "4時間足はもみ合い"}.get(co["trend"])
+    ma = "・".join(x for x in (f"7日線{co['vs_ma7']:+.1f}%" if co["vs_ma7"] is not None else "",
+                                f"30日線{co['vs_ma30']:+.1f}%" if co["vs_ma30"] is not None else "") if x)
+    head = {"strong": "上昇の流れが続いています。", "early": "7日線を上抜けて、上がり始めています。",
+            "dip": "上昇トレンドの中での一時的な下げです。", "flat": "方向がはっきりしません。",
+            "weak": "下落の流れが続いています。"}.get(co["status"], "")
+    if co["status"] == "hot":
+        head = ("FRが高く、ロングが混んでいます。" if (co["funding"] or 0) >= FR_HOT
+                else f"24時間で{co['chg_24h']:+.1f}%と急に上がっています。")
+    parts = [head]
+    if tr:
+        parts.append(f"{tr}（{ma}）。" if ma else f"{tr}。")
+    if co["div"] and co["div"] != "flat":
+        parts.append(f"建玉: {co['div_text']}。")
+    return "".join(parts)
+
+
+def judge_coins(coins):
+    for co in coins:
+        co["status"] = judge(co)
+        co["status_text"] = STATUS[co["status"]][0]
+        co["why"] = why_text(co)
+    coins.sort(key=lambda c: (STATUS[c["status"]][1], c["rank"]))
     n = 0
-    for co in coins:  # coinsは状態の良い順
-        if co["entry"]:
-            n += 1
-            co["entry"] = n <= COIN_ENTRY_MAX
+    for co in coins:  # 状態の良い順に「条件そろい」を最大 COIN_ENTRY_MAX 個
+        ok = (co["status"] in ("strong", "early", "dip") and co["div"] not in ("warn", "weak")
+              and (co["funding"] is None or co["funding"] < FR_HOT))
+        n += ok
+        co["entry"] = bool(ok and n <= COIN_ENTRY_MAX)
 
 
-def build_flow(coins, m):
-    """上位銘柄のBTC比から「今どこに資金が向かっているか」をまとめる"""
+def build_flow(coins):
+    """値動きと建玉の増減から「今どこに資金が入っているか」をまとめる"""
     for co in coins:  # 24時間の時価総額の増減（ドル）
         c24, mc = co["chg_24h"], co.get("mcap")
         co["mcap_chg"] = mc * c24 / (100 + c24) if (c24 is not None and mc) else None
-    by_rel = sorted([c for c in coins if c["rel_24h"] is not None], key=lambda c: -c["rel_24h"])
-    ins = [c for c in by_rel if c["rel_24h"] >= FLOW_MOVE]
-    outs = [c for c in reversed(by_rel) if c["rel_24h"] <= -FLOW_MOVE]
-    new_money = [c["sym"] for c in by_rel if (c.get("oi_real") or 0) >= OI_MOVE and c["rel_24h"] > 0]
+    by_chg = sorted([c for c in coins if c["chg_24h"] is not None], key=lambda c: -c["chg_24h"])
+    ins = [c for c in by_chg if c["chg_24h"] >= FLOW_MOVE]
+    outs = [c for c in reversed(by_chg) if c["chg_24h"] <= -FLOW_MOVE]
+    new_money = [c["sym"] for c in by_chg if (c.get("oi_real") or 0) >= OI_MOVE and c["chg_24h"] > 0]
     names = lambda xs: "・".join(xs)  # noqa: E731
+    up = sum(c["chg_24h"] > 0 for c in by_chg)
+    lines = [f"{len(by_chg)}銘柄中 {up}銘柄が24時間で上昇。"]
     if ins:
-        text = f"資金は {names([c['sym'] for c in ins[:5]])} に向かっています（BTCより強い）。"
-    elif len(outs) >= len(coins) / 2 and (m.get("btc_24h") or 0) > 0:
-        text = "BTCだけが強く、アルトから資金が抜けています。BTCに集まっている時間帯です。"
-    else:
-        text = "BTCより目立って強い銘柄はありません。資金の行き先がはっきりしない、様子見の時間帯です。"
+        lines.append(f"資金が入っているのは {names([c['sym'] for c in ins[:5]])}（+{FLOW_MOVE:g}%以上）。")
     if new_money:
-        text += f" {names(new_money[:4])}は新しい買い（建玉の増加）を伴っています。"
+        lines.append(f"{names(new_money[:4])} は建玉も増えていて、新しい買いを伴っています。")
     if outs:
-        text += f" 抜けているのは {names([c['sym'] for c in outs[:4]])}。"
-    return {"text": text.strip(), "in": [c["sym"] for c in ins], "out": [c["sym"] for c in outs],
+        lines.append(f"抜けているのは {names([c['sym'] for c in outs[:5]])}（−{FLOW_MOVE:g}%以下）。")
+    if not ins and not outs:
+        lines.append(f"±{FLOW_MOVE:g}%を超えて動いた銘柄はなく、様子見の時間帯です。")
+    return {"text": "".join(lines), "in": [c["sym"] for c in ins], "out": [c["sym"] for c in outs],
             "new_money": new_money}
 
 
@@ -974,10 +900,8 @@ def main():
         r.update({k: p.get(k) for k in ("price", "px_24h", "vs_ma7", "vs_ma30", "trend")})
     score_chains(chains)
 
-    sectors = build_sectors(market, hist, now_ts)
     print("上位銘柄...")
     coins = build_coins(market, meta, tradable, hist, now_ts)
-    picks, _ = judge_coins(coins, sectors)
     shown = [r for r in chains if r["symbol"] in {c["sym"] for c in coins}]  # 上位銘柄がそのチェーンの通貨のものだけ
     if not MOCK:
         print("取引できるトークン...")
@@ -987,35 +911,28 @@ def main():
     for r in chains:
         r["tokens"] = tokens.get(r["name"], [])
     cache.save()
-    btc = build_btc(market, tradable, hist, now_ts)
-    enrich_coins([btc] + coins, prices, chains, hist)
-    btc["why"] = btc_why(btc)
-    flow = build_flow(coins, market)
+    enrich_coins(coins, prices, chains, hist)
+    judge_coins(coins)
+    flow = build_flow(coins)
 
     snap = {"ts": now_ts, "btc_price": market["btc_price"],
-            "cats": {s["id"]: [s["mcap"], round(s["rel_24h"], 2)] for s in sectors},
             "chains": {r["name"]: r["score"] for r in chains},
-            "coins": {c["id"]: round(c["rel_24h"], 2) for c in coins if c["rel_24h"] is not None},
-            "cpx": {c["id"]: c["price"] for c in [btc] + coins if c["price"]},
+            "cpx": {c["id"]: c["price"] for c in coins if c["price"]},
             # Hyperliquidの建玉（24時間前との比較用。古いものは消す）
             "oi": {k: round(v["oi_usd"]) for k, v in tradable.items()
-                   if v.get("oi_usd") and (k in derivs or k == "BTC" or any(c["sym"] == k for c in coins))}}
+                   if v.get("oi_usd") and (k in derivs or any(c["sym"] == k for c in coins))}}
     hist = (hist + [snap])[-HIST_MAX:]
     for s in hist:
         if s["ts"] < now_ts - 26 * 3600:
             s.pop("oi", None)
-    for c in [btc] + coins:
-        c.pop("cats", None)
+    for c in coins:
         c.pop("oi", None)
 
     data = {
         "updated": datetime.fromtimestamp(now_ts, timezone.utc).isoformat(),
         "mock": MOCK, "top_rank": TOP_RANK,
-        "btc": {"price": market["btc_price"], "chg_24h": market["btc_24h"], "chg_7d": market.get("btc_7d")},
-        "base": btc,
         "flow": flow,
         "coins": coins,
-        "picks": picks,
         "deriv_source": dsrc,
         "warnings": warnings,
     }
@@ -1025,7 +942,8 @@ def main():
         HIST_PATH.write_text(json.dumps(hist, separators=(",", ":")))
         META_PATH.parent.mkdir(exist_ok=True)
         META_PATH.write_text(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
-    print(f"done: {DATA_PATH.name} / coins={len(coins)} picks={picks} deriv={dsrc}")
+    entry = [c["sym"] for c in coins if c["entry"]]
+    print(f"done: {DATA_PATH.name} / coins={len(coins)} entry={entry} deriv={dsrc}")
 
 
 if __name__ == "__main__":
