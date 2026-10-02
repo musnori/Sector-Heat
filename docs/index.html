@@ -4,217 +4,329 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>資金の温度計</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#E9EDF2; --surface:#F7F9FB; --ink:#17202E; --muted:#5B6778; --rule:#CCD4DE;
-  --cold:#3E7CB1; --mild:#7FA39A; --warm:#E3A33B; --hot:#D4432B; --out:#8792A3; --good:#2E8656;
-  --num:"Barlow Condensed","Zen Kaku Gothic New",system-ui,sans-serif;
-  --text:"Zen Kaku Gothic New","Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
-  box-sizing:border-box;
+  color-scheme:light;
+  --page:#f4f4f1; --surface:#fcfcfb; --raised:#ffffff;
+  --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --ring:rgba(11,11,11,.10);
+  --up:#e34948; --down:#2a78d6;
+  --good:#0ca30c; --good-ink:#006300; --warn:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --good-bg:rgba(12,163,12,.10); --serious-bg:rgba(236,131,90,.16); --warn-bg:rgba(250,178,25,.18); --neutral-bg:rgba(137,135,129,.14);
+  --sans:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
   padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){--bg:#121826;--surface:#1A2233;--ink:#E6EBF2;--muted:#8D99AB;--rule:#2B3549;--out:#5E6A7C;--good:#4FB57E}
+  :root:not([data-theme="light"]){color-scheme:dark;
+    --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
+    --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+    --up:#e66767; --down:#3987e5; --good-ink:#0ca30c;
+    --good-bg:rgba(12,163,12,.18); --serious-bg:rgba(236,131,90,.20); --warn-bg:rgba(250,178,25,.16); --neutral-bg:rgba(137,135,129,.20)}
 }
-:root[data-theme="dark"]{--bg:#121826;--surface:#1A2233;--ink:#E6EBF2;--muted:#8D99AB;--rule:#2B3549;--out:#5E6A7C;--good:#4FB57E}
-*,*::before,*::after{box-sizing:inherit}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
-body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--text);line-height:1.6;
-  -webkit-font-smoothing:antialiased}
-main{max-width:880px;margin:0 auto;padding:28px 18px 48px}
-.num{font-family:var(--num);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+:root[data-theme="dark"]{color-scheme:dark;
+  --page:#0d0d0d; --surface:#1a1a19; --raised:#222220;
+  --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --ring:rgba(255,255,255,.10);
+  --up:#e66767; --down:#3987e5; --good-ink:#0ca30c;
+  --good-bg:rgba(12,163,12,.18); --serious-bg:rgba(236,131,90,.20); --warn-bg:rgba(250,178,25,.16); --neutral-bg:rgba(137,135,129,.20)}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+main{max-width:1040px;margin:0 auto;padding:24px 16px 56px}
 a{color:inherit}
-:focus-visible{outline:2px solid var(--cold);outline-offset:2px}
+:focus-visible{outline:2px solid var(--down);outline-offset:2px;border-radius:4px}
+.tn{font-variant-numeric:tabular-nums}
+.mut{color:var(--muted)} .ink2{color:var(--ink-2)}
 
-header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
-h1{font-size:clamp(28px,6vw,40px);font-weight:700;margin:0;letter-spacing:.04em}
-.updated{color:var(--muted);font-size:13px}
+/* ヘッダー */
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;margin-bottom:20px}
+h1{font-size:22px;font-weight:700;margin:0;letter-spacing:.02em}
+.updated{font-size:13px;color:var(--muted);margin-top:2px}
+.btc{display:flex;align-items:baseline;gap:6px 14px;flex-wrap:wrap}
+.btc .lbl{font-size:12px;color:var(--muted)}
+.btc .px{font-size:22px;font-weight:700}
+.btc .chg{font-size:14px}
 
-.picks{background:var(--surface);border-left:3px solid var(--good);padding:10px 14px;margin:0 0 14px;font-size:14px}
-.picks b{color:var(--good)}
+.panel{background:var(--surface);border-radius:12px;box-shadow:0 0 0 1px var(--ring);padding:18px 20px}
+h2{font-size:16px;font-weight:700;margin:0 0 4px}
+.sub{font-size:13px;color:var(--muted);margin:0}
 
-h2{font-size:19px;margin:0 0 4px;font-weight:700}
-.sub{margin:0 0 14px;color:var(--muted);font-size:13px}
-section{margin-top:36px}
+/* 資金の流れ */
+.flow .head{font-size:18px;font-weight:600;line-height:1.6;margin:8px 0 16px}
+.fcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 32px}
+.fcol h3{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px;letter-spacing:.04em}
+.frow{display:grid;grid-template-columns:minmax(0,1fr) 88px 52px;gap:10px;align-items:center;padding:7px 0;border-top:1px solid var(--grid);font-size:14px}
+.frow .nm{min-width:0}
+.frow .nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .nm small{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.frow .v{text-align:right;font-weight:600}
+.fnone{padding:7px 0;border-top:1px solid var(--grid);font-size:13px;color:var(--muted)}
+.picks{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--grid);font-size:13px;align-items:center}
+.picks .k{color:var(--muted);margin-right:2px}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;background:var(--good-bg);color:var(--good-ink);text-decoration:none}
 
-.chip{font-size:12px;font-weight:700;padding:1px 8px;border-radius:4px;color:#fff;white-space:nowrap}
-details.toks{position:relative;margin:8px 0 0 62px;padding:8px 12px}
-.toks summary{font-size:13px;font-weight:700;cursor:pointer;color:var(--ink);width:max-content}
-.toks table{width:100%;border-collapse:collapse;margin-top:6px;font-size:13px}
-.toks th{font-weight:500;color:var(--muted);text-align:right;padding:3px 6px;font-size:12px;white-space:nowrap}
-.toks td{padding:5px 6px;border-top:1px solid var(--rule);text-align:right;white-space:nowrap}
-.toks th:first-child,.toks td:first-child{text-align:left;padding-left:0}
-.toks td:first-child b{font-family:var(--num);font-size:15px}
-.toks td:first-child span.sub{display:block;color:var(--muted);font-size:11px;max-width:16em;overflow:hidden;text-overflow:ellipsis}
-.toks .num{font-weight:600;font-size:14px}
-.toks .lt{font-weight:700;font-size:12px;text-align:left;white-space:normal;min-width:6em}
-.toks p{margin:6px 0 0;font-size:11px;color:var(--muted)}
-@media (max-width:560px){
-  .toks .hide-sm{display:none}.toks td,.toks th{padding-left:4px;padding-right:4px}
-  .toks td:first-child span.sub{max-width:8em}}
+/* 横棒（BTC比）: 中央が0 */
+.dbar{position:relative;height:8px;background:linear-gradient(var(--axis),var(--axis)) center/1px 14px no-repeat}
+.dbar i{position:absolute;top:0;bottom:0;border-radius:0 4px 4px 0}
+.dbar i.neg{border-radius:4px 0 0 4px}
 
-.ven{display:inline-block;font-size:10px;font-weight:700;padding:0 5px;border-radius:3px;border:1px solid var(--rule);color:var(--muted);margin-right:3px;vertical-align:1px}
-.bar{position:relative;height:14px}
-.bar::before{content:"";position:absolute;left:50%;top:-4px;bottom:-4px;width:1px;background:var(--rule)}
-.bar i{position:absolute;top:0;bottom:0;border-radius:2px}
-.flow{background:var(--surface);border-radius:10px;padding:14px 16px;margin-top:18px}
-.flow .ftxt{margin:0 0 10px;font-size:15px;font-weight:500}
-.fsec{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 16px;font-size:13px}
-.fsec h3{font-size:13px;margin:0 0 4px;color:var(--muted);font-weight:700}
-.fsec ul{list-style:none;margin:0;padding:0}
-.fsec li{display:flex;align-items:baseline;gap:6px;padding:3px 0;border-top:1px solid var(--rule)}
-.fsec li span{flex:1;min-width:0}
-.fsec li b{font-weight:700}
-.fsec li small{color:var(--muted);margin-left:6px}
-.fsec li .num{flex:none;font-weight:600;font-size:14px}
-.fbars{margin-top:14px}
-.fb{display:grid;grid-template-columns:4em minmax(0,1fr) 4.2em 5em;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--rule);font-size:14px}
-.fb b{font-weight:700}
-.fb .v{text-align:right;font-size:16px;font-weight:600}
-.fb small{text-align:right;font-size:11px;color:var(--muted);white-space:nowrap}
-@media (max-width:560px){.fsec{grid-template-columns:1fr}.fb{grid-template-columns:3.6em minmax(0,1fr) 4em 4.6em;gap:6px}}
-.warn{background:var(--surface);border-left:3px solid var(--warm);padding:10px 14px;margin-top:18px;font-size:14px}
-details{margin-top:40px;background:var(--surface);padding:14px 16px;border-radius:8px;font-size:14px}
-summary{cursor:pointer;font-weight:700}
-details dt{font-weight:700;margin-top:10px} details dd{margin:2px 0 0}
-footer{margin-top:28px;color:var(--muted);font-size:12px}
-.empty{padding:40px 0;color:var(--muted)}
+/* 一覧 */
+.list{margin-top:16px;padding:16px 0 0}
+.lhead{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:0 20px 12px}
+.seg{display:inline-flex;background:var(--page);border-radius:8px;padding:3px;gap:2px;box-shadow:0 0 0 1px var(--ring) inset}
+.seg button{font:inherit;font-size:13px;border:0;background:none;color:var(--ink-2);padding:5px 12px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--raised);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--ring)}
+.cols,.row>summary{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) 64px 76px minmax(0,1.5fr) 64px 64px 64px 112px 14px;gap:12px;align-items:center;padding:0 20px}
+.cols{font-size:12px;color:var(--muted);padding-bottom:8px;border-bottom:1px solid var(--grid)}
+.cols span{white-space:nowrap}
+.r{text-align:right}
+.row{border-bottom:1px solid var(--grid)}
+.row:last-child{border-bottom:0}
+.row>summary{list-style:none;cursor:pointer;padding-top:12px;padding-bottom:12px}
+.row>summary::-webkit-details-marker{display:none}
+.row>summary:hover,.row[open]>summary{background:var(--page)}
+.coin{min-width:0;display:flex;align-items:baseline;gap:8px}
+.coin b{font-size:16px;font-weight:700}
+.coin small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coin .rk{display:inline-block;min-width:1.4em;font-size:12px;color:var(--muted)}
+.ent{font-size:11px;font-weight:700;color:var(--good-ink);background:var(--good-bg);border-radius:4px;padding:0 5px;white-space:nowrap}
+.price{text-align:right;white-space:nowrap}
+.price b{font-size:16px;font-weight:700}
+.price .m24{display:none}
+.chg24{font-size:14px;text-align:right;white-space:nowrap}
+.arr{font-size:9px;margin-right:3px;vertical-align:1px}
+.arr.u{color:var(--up)} .arr.d{color:var(--down)}
+.spark svg{display:block;width:76px;height:26px}
+.relc{display:grid;grid-template-columns:minmax(0,1fr) 54px;gap:8px;align-items:center}
+.relc .v{text-align:right;font-weight:600;font-size:14px}
+.num{font-size:14px;text-align:right;white-space:nowrap}
+.hot{color:var(--critical);font-weight:700}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap;color:var(--ink)}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--dot)}
+.s-good{background:var(--good-bg);--dot:var(--good)}
+.s-hot{background:var(--serious-bg);--dot:var(--serious)}
+.s-warn{background:var(--warn-bg);--dot:var(--warn)}
+.s-neutral{background:var(--neutral-bg);--dot:var(--muted)}
+.chev{display:block;width:14px;height:14px;color:var(--muted);transition:transform .15s}
+.row[open] .chev{transform:rotate(90deg)}
+
+/* 詳細 */
+.det{padding:4px 20px 20px;background:var(--page)}
+.why{margin:0 0 14px;font-size:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.tile{background:var(--surface);border-radius:8px;box-shadow:0 0 0 1px var(--ring);padding:8px 12px}
+.tile .k{font-size:12px;color:var(--muted)}
+.tile .v{font-size:15px;font-weight:600;margin-top:2px}
+.tile .v small{font-size:12px;font-weight:400;color:var(--ink-2);margin-left:6px}
+.dsec{margin-top:16px}
+.dsec h4{font-size:12px;font-weight:600;color:var(--muted);margin:0 0 6px;letter-spacing:.04em}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;padding:3px 10px;border-radius:6px;background:var(--surface);box-shadow:0 0 0 1px var(--ring)}
+.chip span{margin-left:6px;color:var(--muted)}
+.toks{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border-radius:8px;box-shadow:0 0 0 1px var(--ring)}
+.toks th{font-weight:500;font-size:12px;color:var(--muted);text-align:right;padding:6px 10px;border-bottom:1px solid var(--grid)}
+.toks td{padding:6px 10px;text-align:right;border-bottom:1px solid var(--grid);white-space:nowrap}
+.toks tr:last-child td{border-bottom:0}
+.toks th:first-child,.toks td:first-child{text-align:left}
+.toks td:first-child small{color:var(--muted);margin-left:6px}
+.dlink{display:inline-block;margin-top:14px;font-size:13px;font-weight:600;text-decoration:none;color:var(--down)}
+
+.warn{background:var(--surface);box-shadow:0 0 0 1px var(--ring);border-left:3px solid var(--warn);border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:14px}
+.empty{padding:40px 20px;color:var(--muted)}
+details.help{margin-top:16px}
+details.help>summary{cursor:pointer;font-weight:700;font-size:15px}
+details.help dt{font-weight:700;margin-top:12px;font-size:14px} details.help dd{margin:2px 0 0;font-size:14px;color:var(--ink-2)}
+footer{margin-top:20px;color:var(--muted);font-size:12px}
+
+/* タブレット: 48時間・7日・OIを詳細へ */
+@media (max-width:860px){
+  .cols,.row>summary{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 64px minmax(0,1.4fr) 64px 112px 14px}
+  .c-spark,.c-7d,.c-oi{display:none}
+}
+/* スマホ: 1銘柄2段 */
+@media (max-width:600px){
+  main{padding:16px 12px 48px}
+  .panel{padding:16px}
+  .list{padding:14px 0 0}
+  .flow .head{font-size:16px}
+  .fcols{grid-template-columns:1fr}
+  .lhead{padding:0 16px 10px}
+  .cols{display:none}
+  .row>summary{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"coin price" "st rel";gap:8px 12px;padding:12px 16px}
+  .c-coin{grid-area:coin} .c-price{grid-area:price} .c-st{grid-area:st;align-self:center} .c-rel{grid-area:rel;width:150px}
+  .c-fr,.c-chev,.c-24h{display:none}
+  .price .m24{display:inline;margin-left:8px;font-size:13px;color:var(--ink-2)}
+  .det{padding:4px 16px 16px}
+  .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .toks .hs{display:none}
+}
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>資金の温度計</h1>
-    <div class="updated" id="updated">読み込み中…</div>
+    <div><h1>資金の温度計</h1><div class="updated" id="updated">読み込み中…</div></div>
+    <div class="btc" id="btc"></div>
   </header>
   <div id="app"></div>
-  <details>
+  <details class="help panel">
     <summary>見方</summary>
     <dl>
       <dt>今の資金の流れ</dt>
-      <dd>上位銘柄の24時間のBTC比を並べ、BTC比+1%以上の銘柄を「強い」、-1%以下を「抜けている」としています。セクターは、上位銘柄が属するカテゴリ（CoinGecko）のうち、初動・トレンド中・過熱で対BTCがプラスのものを「向かっている」、失速・弱いでマイナスのものを「抜けている」として並べています。棒の下の金額は、24時間の時価総額の増減です。建玉が価格の影響を除いて+5%以上増えながら上がっている銘柄は「新しい買いを伴っている」と書きます。</dd>
-      <dt>上位銘柄のカード</dt>
-      <dd>時価総額20位まで（BTC・ステーブル・ラップ系を除く）の銘柄ごとに、BTC比の値動き、出来高、資金調達率(FR)、建玉(OI)の24時間変化、価格トレンド、OIと価格のズレ、関連セクターの局面を並べています。右の小さな線は48時間の価格の動きです。ETH・SOL・BNBのようにチェーンの通貨であれば、そのチェーンの温度と資金の流れ（ステーブルコイン・DEX出来高・TVLの7日変化）も出します。</dd>
-      <dt>チェーンの温度（0〜100）</dt>
-      <dd>ステーブルコイン流入、DEX出来高、TVL、建玉(OI)の伸びを、チェーン同士で順位づけして合成した値です。資金調達率(FR)が0.05%以上だと15点減点します。</dd>
-      <dt>静かに流入中</dt>
-      <dd>資金の指標のうち2つ以上がプラスで、FRがまだ0.02%未満。レバレッジが軽いまま実需のお金が入っている状態です。</dd>
-      <dt>過熱気味</dt>
-      <dd>FRが0.05%以上、またはOIが24時間で+25%以上。ロングが混んでいて、清算で急落しやすい状態です。</dd>
+      <dd>上位銘柄の24時間のBTC比で、+1%以上の銘柄を「強い」、-1%以下を「抜けている」としています。セクターは、上位銘柄が属するカテゴリ（CoinGecko）のうち、初動・トレンド中・過熱で対BTCがプラスのものを「向かっている」、失速・弱いでマイナスのものを「抜けている」として並べています。建玉が価格の影響を除いて+5%以上増えながら上がっている銘柄は「新しい買いを伴っている」と書きます。</dd>
+      <dt>上位20銘柄の表</dt>
+      <dd>HyperliquidかOstiumで取引できる銘柄を、時価総額の大きい順に20個（BTC・ステーブル・ラップ系を除く）。左の数字はCoinGeckoの時価総額順位です。価格と24時間の値動き（CoinGecko）、48時間の価格の線、BTC比（中央の線より右がBTCより強い）、7日のBTC比、資金調達率(FR)、建玉(OI)の24時間変化、状態を並べています。行をタップすると、トレンド・OIと価格のズレ・関連セクター・チェーンの資金の流れなどの詳しい情報が開きます。</dd>
+      <dt>銘柄の状態</dt>
+      <dd>関連セクターの局面と銘柄自身の動きから決めています。出遅れ候補: 関連セクターが初動かトレンド中でBTC比+3%以上動いているのに、その銘柄はまだ2%以上遅れていて、FRも低い。過熱・追わない: 24時間でBTC比+8%以上か、FRが0.05%以上。それ以外は銘柄自身の動きで初動・トレンド中・様子見・失速・弱いに分けます。「状態順」ではこの順（出遅れ候補→初動→トレンド中→過熱→様子見→失速→弱い）に並びます。</dd>
+      <dt>条件そろい</dt>
+      <dd>状態が「出遅れ候補・初動・トレンド中」で、「上昇トレンド」＋「OIに危ないズレがない（急増・買い戻し主導でない）」を満たした銘柄のうち、状態順で最大3つです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
       <dt>トレンド</dt>
       <dd>4時間足の終値で、今の価格が7日平均・30日平均より上にあるかを見ています。価格 ＞ 7日平均 ＞ 30日平均なら上昇トレンド、逆なら下落トレンドです。</dd>
       <dt>OIと価格のズレ</dt>
       <dd>OIはドル建てなので、価格の上げ下げの影響を除いてから比べています。価格が上がってOIも増えていれば新しい買いが入っている、価格が動かないのにOIだけ急増していれば清算で急に動きやすい、という見方です。</dd>
-      <dt>条件そろい</dt>
-      <dd>状態が「出遅れ候補・初動・トレンド中」で、「上昇トレンド」＋「OIに危ないズレがない（急増・買い戻し主導でない）」を満たした銘柄のうち、上から最大3つです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
-      <dt>銘柄の状態</dt>
-      <dd>上位銘柄に、関連セクターの局面と銘柄自身の動きから状態をつけています。出遅れ候補: 関連セクターが初動かトレンド中でBTC比+3%以上動いているのに、その銘柄はまだ2%以上遅れていて、FRも低い。過熱・追わない: 24時間でBTC比+8%以上か、FRが0.05%以上。それ以外は銘柄自身の動きで初動・トレンド中・様子見・失速・弱いに分けます。カードはこの順（出遅れ候補→初動→トレンド中→過熱→様子見→失速→弱い）に並びます。</dd>
-      <dt>銘柄の関連セクターの局面</dt>
+      <dt>関連セクターの局面</dt>
       <dd>初動: BTCより強くなって6時間以内。トレンド中: 6時間以上BTCより強い、または7日でも強い。過熱: 24時間でBTC比+8%以上か、上位銘柄の平均FRが0.05%以上。失速: 7日では強いのに今日はBTCより弱い。「Layer 1」「Ethereum Ecosystem」のような広すぎるカテゴリは使いません。</dd>
+      <dt>チェーンの温度（0〜100）</dt>
+      <dd>ETH・SOL・BNBのようなチェーンの通貨だけに出ます。ステーブルコイン流入、DEX出来高、TVL、建玉の伸びを、チェーン同士で順位づけして合成した値です。FRが0.05%以上だと15点減点します。「静かに流入中」は資金の指標の2つ以上がプラスでFRが0.02%未満、「過熱気味」はFRが0.05%以上かOIが24時間で+25%以上です。</dd>
       <dt>FRの単位</dt>
-      <dd>Hyperliquidは1時間ごとの資金調達なので、他の取引所と比べやすいよう8時間分に換算して表示しています。</dd>
+      <dd>Hyperliquidは1時間ごとの資金調達なので、他の取引所と比べやすいよう8時間分に換算しています。0.05%以上は赤字で出します。</dd>
       <dt>取引できるトークン</dt>
-      <dd>そのチェーンのDeFiトークン（DefiLlama）とエコシステムの銘柄（CoinGecko）のうち、Hyperliquid（HL）かOstium（Ost）で取引できるものを出来高の多い順に最大8つ並べています（チェーンの通貨のカードの中にあります）。値動きと資金調達率はHyperliquidの値です。</dd>
+      <dd>チェーンの通貨の詳細に出ます。そのチェーンのDeFiトークン（DefiLlama）とエコシステムの銘柄（CoinGecko）のうち、Hyperliquid（HL）かOstium（Ost）で取引できるものを出来高の多い順に最大8つです。</dd>
     </dl>
   </details>
-  <footer>データ: CoinGecko, DefiLlama, Hyperliquid, 取引所の公開API。投資判断はご自身で。</footer>
+  <footer>データ: CoinGecko, DefiLlama, Hyperliquid, 取引所の公開API。毎時更新。投資判断はご自身で。</footer>
 </main>
 <script>
 const $ = s => document.querySelector(s);
-const heat = s => s==null ? 'var(--out)' : s>=75 ? 'var(--hot)' : s>=55 ? 'var(--warm)' : s>=35 ? 'var(--mild)' : 'var(--cold)';
-const TAG = {hot:'var(--hot)', early:'var(--warm)', flat:'var(--muted)', out:'var(--cold)'};
 const esc = s => String(s??'').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const sp = v => v==null ? '—' : (v>0?'+':'') + v.toFixed(Math.abs(v)<10?1:0) + '%';
-const TREND = {up:['上昇トレンド','var(--good)'], down:['下落トレンド','var(--cold)'], range:['もみ合い','var(--out)']};
-const DIV = {good:'var(--good)', weak:'var(--warm)', warn:'var(--hot)', flat:'var(--muted)'};
-const ven = vs => (vs||[]).map(v=>`<span class="ven">${v==='HL'?'HL':'Ost'}</span>`).join('');
-const vol = v => v==null ? '—' : v>=1e9 ? '$'+(v/1e9).toFixed(1)+'B' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+'M' : '$'+(v/1e3).toFixed(0)+'k';
+const pc = v => v==null ? '—' : (v>0?'+':v<0?'−':'') + Math.abs(v).toFixed(Math.abs(v)<10?1:0) + '%';
+const usd = v => {
+  if(v==null) return '—';
+  if(v>=1000) return '$' + Math.round(v).toLocaleString('en-US');
+  if(v>=1) return '$' + v.toFixed(2);
+  if(v>=0.01) return '$' + v.toFixed(4);
+  return '$' + v.toPrecision(4);
+};
+const big = v => v==null ? '—' : v>=1e12 ? '$'+(v/1e12).toFixed(2)+'T' : v>=1e9 ? '$'+(v/1e9).toFixed(1)+'B' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+'M' : '$'+(v/1e3).toFixed(0)+'k';
 const fr = v => v==null ? '—' : (v*100).toFixed(3) + '%';
-const SPC = {early:'var(--warm)', trend:'var(--good)', hot:'var(--hot)', fade:'var(--cold)', weak:'var(--cold)', flat:'var(--out)'};
-const ST_PC = {lag:'var(--good)', early:'var(--warm)', trend:'var(--good)', hot:'var(--hot)', flat:'var(--out)', fade:'var(--cold)', weak:'var(--cold)'};
-const symLink = c => c.hl ? `<a href="https://app.hyperliquid.xyz/trade/${encodeURIComponent(c.hl)}" target="_blank" rel="noopener">${esc(c.sym)}</a>` : esc(c.sym);
-const venTxt = c => (c.venues||[]).join(' / ') || 'HL・Ostiumになし';
+const arrow = v => v==null || Math.abs(v)<0.05 ? '' : `<span class="arr ${v>0?'u':'d'}" aria-hidden="true">${v>0?'▲':'▼'}</span>`;
+const STC = {lag:'s-good', early:'s-good', trend:'s-good', hot:'s-hot', flat:'s-neutral', fade:'s-warn', weak:'s-neutral'};
+const TREND = {up:'上昇トレンド', down:'下落トレンド', range:'もみ合い'};
+const hlUrl = c => `https://app.hyperliquid.xyz/trade/${encodeURIComponent(c.hl)}`;
+const CHEV = '<svg class="chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-function spark(vals, color, w=300, h=64){
-  const pts = vals.map((v,i)=>[i,v]).filter(p=>p[1]!=null);
-  if(pts.length<2) return '';
-  const ys = pts.map(p=>p[1]), lo=Math.min(...ys), hi=Math.max(...ys), span=(hi-lo)||1, n=vals.length-1||1;
-  const d = pts.map(([i,v],k)=>`${k?'L':'M'}${(i/n*w).toFixed(1)},${(h-3-(v-lo)/span*(h-6)).toFixed(1)}`).join('');
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
+function dbar(v, max){
+  if(v==null) return '<div class="dbar"></div>';
+  const w = Math.min(50, Math.abs(v)/max*50);
+  return `<div class="dbar" role="img" aria-label="BTC比 ${pc(v)}"><i class="${v<0?'neg':''}" style="${v<0?'right':'left'}:50%;width:${w}%;background:${v<0?'var(--down)':'var(--up)'}"></i></div>`;
+}
+function spark(vals){
+  const pts = (vals||[]).map((v,i)=>[i,v]).filter(p=>p[1]!=null);
+  if(pts.length<2) return '<span class="mut" style="font-size:12px">記録中</span>';
+  const W=76, H=26, ys=pts.map(p=>p[1]), lo=Math.min(...ys), hi=Math.max(...ys), sp=(hi-lo)||1, n=vals.length-1||1;
+  const X = i => 2+i/n*(W-6), Y = v => H-3-(v-lo)/sp*(H-6);
+  const d = pts.map(([i,v],k)=>`${k?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+  const [li,lv] = pts[pts.length-1], col = lv>=pts[0][1] ? 'var(--up)' : 'var(--down)';
+  return `<svg viewBox="0 0 ${W} ${H}" aria-hidden="true"><path d="${d}" fill="none" stroke="var(--ink-2)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${X(li).toFixed(1)}" cy="${Y(lv).toFixed(1)}" r="2.5" fill="${col}"/></svg>`;
+}
+
+let DATA = null, SORT = 'status';
+const OPEN = new Set();
+const SORTS = {
+  status: null,  // データの並び（状態の良い順）のまま
+  rel: (a,b) => (b.rel_24h??-1e9) - (a.rel_24h??-1e9),
+  rank: (a,b) => a.rank - b.rank,
+};
+
+function flowHtml(d){
+  const f = d.flow, coins = d.coins||[];
+  if(!f) return '';
+  const max = Math.max(3, ...[...f.in_secs, ...f.out_secs].map(s=>Math.abs(s.rel_24h)));
+  const row = s => `<div class="frow"><div class="nm"><b>${esc(s.name)}</b><small>${esc(s.phase_text)} ・ ${esc(s.syms.join(', '))}</small></div>${dbar(s.rel_24h, max)}<span class="v tn">${pc(s.rel_24h)}</span></div>`;
+  const ent = coins.filter(c=>c.entry);
+  return `<section class="panel flow" aria-labelledby="h-flow">
+    <h2 id="h-flow">今の資金の流れ</h2><p class="sub">上位${(d.coins||[]).length}銘柄とその関連セクター、24時間のBTC比</p>
+    <p class="head">${esc(f.text)}</p>
+    <div class="fcols">
+      <div class="fcol"><h3>資金が向かっているセクター</h3>${f.in_secs.map(row).join('') || '<div class="fnone">なし</div>'}</div>
+      <div class="fcol"><h3>資金が抜けているセクター</h3>${f.out_secs.map(row).join('') || '<div class="fnone">なし</div>'}</div>
+    </div>
+    <div class="picks"><span class="k">条件そろい</span>${ent.length ? ent.map(c=>`<a class="tag" href="#c-${esc(c.id)}">◎ ${esc(c.sym)}</a>`).join('') : '<span class="ink2">今はなし</span>'}</div>
+  </section>`;
+}
+
+function detailHtml(c){
+  const ch = c.chain;
+  const tile = (k, v, small) => `<div class="tile"><div class="k">${k}</div><div class="v tn">${esc(v)}${small?`<small>${esc(small)}</small>`:''}</div></div>`;
+  let h = `<div class="det"><p class="why">${esc(c.why)}</p><div class="tiles">
+    ${tile('トレンド', c.trend ? TREND[c.trend] : '—')}
+    ${tile('7日線との差', pc(c.vs_ma7))}${tile('30日線との差', pc(c.vs_ma30))}
+    ${tile('OIと価格', c.div_text || '24時間分の記録待ち')}
+    ${tile('出来高 24h', big(c.vol))}
+    ${tile('時価総額', big(c.mcap), c.mcap_chg!=null ? `24h ${c.mcap_chg>=0?'+':'−'}${big(Math.abs(c.mcap_chg))}` : '')}
+    ${tile('7日の値動き', pc(c.chg_7d))}${tile('最大レバレッジ', c.max_lev ? c.max_lev+'倍' : '—')}</div>`;
+  if((c.sectors||[]).length) h += `<div class="dsec"><h4>関連セクター（局面・24時間のBTC比）</h4><div class="chips">${c.sectors.map(s=>`<span class="chip">${esc(s.name)}<span>${esc(s.phase_text)} ${pc(s.rel_24h)}</span></span>`).join('')}</div></div>`;
+  if(ch) h += `<div class="dsec"><h4>${esc(ch.name)}チェーンの資金（7日）</h4><div class="tiles">
+      ${tile('チェーンの温度', ch.score ?? '—', ch.label_text)}${tile('ステーブルコイン', pc(ch.stable_7d))}
+      ${tile('DEX出来高', pc(ch.dex_7d))}${tile('TVL', pc(ch.tvl_7d))}</div></div>`;
+  if(ch && (ch.tokens||[]).length) h += `<div class="dsec"><h4>${esc(ch.name)}で取引できるトークン</h4><table class="toks tn">
+      <thead><tr><th>トークン</th><th>24h</th><th class="hs">7日</th><th>FR</th><th>出来高</th></tr></thead><tbody>
+      ${ch.tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b><small>${esc((t.venues||[]).map(v=>v==='HL'?'HL':'Ost').join('・'))}</small></td>
+        <td>${arrow(t.chg_24h)}${pc(t.chg_24h)}</td><td class="hs">${pc(t.px_7d)}</td><td>${fr(t.fr8h)}</td><td>${big(t.vol)}</td></tr>`).join('')}</tbody></table></div>`;
+  if(c.hl) h += `<a class="dlink" href="${hlUrl(c)}" target="_blank" rel="noopener">Hyperliquidで${esc(c.sym)}を開く →</a>`;
+  return h + `</div>`;
+}
+
+function listHtml(d){
+  const coins = [...(d.coins||[])];
+  if(SORTS[SORT]) coins.sort(SORTS[SORT]);
+  const max = Math.max(3, ...coins.map(c=>Math.abs(c.rel_24h??0)));
+  let h = `<section class="panel list" aria-labelledby="h-list">
+    <div class="lhead"><div><h2 id="h-list">上位${coins.length}銘柄</h2><p class="sub">HyperliquidかOstiumで取引できる銘柄を時価総額順に（BTC・ステーブル・ラップ系を除く）。行をタップすると詳しく見られます</p></div>
+      <div class="seg" role="group" aria-label="並び順">${[['status','状態順'],['rel','BTC比順'],['rank','時価総額順']].map(([k,l])=>`<button data-sort="${k}" aria-pressed="${SORT===k}">${l}</button>`).join('')}</div></div>
+    <div class="cols" aria-hidden="true"><span>銘柄</span><span class="r">価格</span><span class="r c-24h">24h</span><span class="c-spark">48時間</span><span>BTC比 24h</span><span class="r c-7d">7日 BTC比</span><span class="r c-fr">FR</span><span class="r c-oi">OI 24h</span><span>状態</span><span></span></div>`;
+  if(!coins.length) h += `<div class="empty">銘柄のデータがありません。</div>`;
+  for(const c of coins){
+    h += `<details class="row" id="c-${esc(c.id)}" data-id="${esc(c.id)}"${OPEN.has(c.id)?' open':''}><summary>
+      <div class="coin c-coin"><span class="rk tn">${c.rank}</span><b>${esc(c.sym)}</b>${c.entry?'<span class="ent">◎ 条件そろい</span>':`<small>${esc(c.name||'')}</small>`}</div>
+      <div class="price c-price tn"><b>${usd(c.price)}</b><span class="m24">${arrow(c.chg_24h)}${pc(c.chg_24h)}</span></div>
+      <div class="chg24 c-24h tn">${arrow(c.chg_24h)}${pc(c.chg_24h)}</div>
+      <div class="spark c-spark">${spark(c.px_series)}</div>
+      <div class="relc c-rel">${dbar(c.rel_24h, max)}<span class="v tn">${pc(c.rel_24h)}</span></div>
+      <div class="num tn c-7d">${pc(c.rel_7d)}</div>
+      <div class="num tn c-fr${c.funding!=null&&c.funding>=0.0005?' hot':''}">${fr(c.funding)}</div>
+      <div class="num tn c-oi">${pc(c.oi_24h)}</div>
+      <div class="c-st"><span class="st ${STC[c.status]||'s-neutral'}">${esc(c.status_text)}</span></div>
+      <div class="c-chev">${CHEV}</div>
+    </summary>${detailHtml(c)}</details>`;
+  }
+  return h + `</section>`;
 }
 
 function render(d){
+  DATA = d;
   const t = new Date(d.updated);
-  $('#updated').textContent = (d.mock?'サンプルデータ ・ ':'') + t.toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' 更新';
-  const b = d.btc;
+  $('#updated').textContent = (d.mock?'サンプルデータ ・ ':'') + t.toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' 更新 ・ 先物: ' + (d.deriv_source||'取得できず');
+  const b = d.btc||{};
+  $('#btc').innerHTML = b.price ? `<span class="lbl">BTC（比較の基準）</span><span class="px tn">${usd(b.price)}</span>
+    <span class="chg tn">24h ${arrow(b.chg_24h)}${pc(b.chg_24h)}</span>${b.chg_7d!=null?`<span class="chg tn">7日 ${arrow(b.chg_7d)}${pc(b.chg_7d)}</span>`:''}` : '';
   let h = '';
   for(const w of d.warnings||[]) h += `<div class="warn">${esc(w)}</div>`;
-
-  const coins = d.coins||[], f = d.flow;
-  if(f && coins.length){
-    const li = s => `<li><span><b>${esc(s.name)}</b><small>${esc(s.phase_text)} ・ ${esc(s.syms.join(', '))}</small></span><span class="num" style="color:${s.rel_24h<0?'var(--cold)':'var(--warm)'}">${sp(s.rel_24h)}</span></li>`;
-    const rows = [...coins].filter(c=>c.rel_24h!=null).sort((a,b)=>b.rel_24h-a.rel_24h);
-    const max = Math.max(3, ...rows.map(c=>Math.abs(c.rel_24h)));
-    h += `<section style="margin-top:22px"><h2>今の資金の流れ</h2><p class="sub">上位${d.top_rank}位の銘柄とその関連セクターの、24時間のBTC比。BTC自体は24h ${sp(b.chg_24h)}${b.chg_7d!=null?`・7日 ${sp(b.chg_7d)}`:''}。</p>
-      <div class="flow"><p class="ftxt">${esc(f.text)}</p>
-      ${f.in_secs.length||f.out_secs.length?`<div class="fsec"><div><h3>資金が向かっているセクター</h3><ul>${f.in_secs.map(li).join('')||'<li>なし</li>'}</ul></div>
-        <div><h3>資金が抜けているセクター</h3><ul>${f.out_secs.map(li).join('')||'<li>なし</li>'}</ul></div></div>`:''}
-      <div class="fbars">${rows.map(c=>{ const w = Math.min(50, Math.abs(c.rel_24h)/max*50), pos = c.rel_24h>=0;
-        return `<div class="fb"><b>${esc(c.sym)}</b>
-          <div class="bar"><i style="${pos?'left:50%':'right:50%'};width:${w}%;background:${pos?'var(--warm)':'var(--cold)'}"></i></div>
-          <span class="v num">${sp(c.rel_24h)}</span><small class="num">${c.mcap_chg==null?'—':(c.mcap_chg>=0?'+':'-')+vol(Math.abs(c.mcap_chg))}</small></div>`; }).join('')}
-      <p class="sub" style="margin:6px 0 0">棒は24時間のBTC比、右端は24時間の時価総額の増減。</p></div></div></section>`;
-  }
-  h += `<section><h2>上位${d.top_rank}位の銘柄</h2><p class="sub">ステーブル・ラップ系を除いた銘柄を、状態の良い順に並べています。大きい数字は24時間のBTC比。名前をタップするとHyperliquidの取引画面が開きます。先物: ${esc(d.deriv_source||'取得できず')}</p>`;
-  if(!coins.length) h += `<div class="empty">銘柄のデータがありません。</div>`;
-  else {
-    const ent = coins.filter(c=>c.entry), pk = coins.filter(c=>(d.picks||[]).includes(c.id));
-    h += `<div class="picks">${ent.length ? `<b>条件がそろった銘柄:</b> ${ent.map(c=>esc(c.sym)).join('、')}` : '今は条件がそろった銘柄はありません。'}
-      ${pk.length ? `<br>注目（出遅れ候補・初動・トレンド中）: ${pk.map(c=>esc(c.sym)).join('、')}` : '<br>出遅れ候補・初動・トレンド中の銘柄もありません。無理に探さなくていい時間帯です。'}
-      <br><span style="color:var(--muted);font-size:12px">条件: 出遅れ候補・初動・トレンド中 ＋ 上昇トレンド ＋ OIに危ないズレなし（上から最大3つ）</span></div>`;
-  }
-  for(const c of coins){
-    const pc = ST_PC[c.status], ch = c.chain;
-    const pxc = (c.chg_24h??0) >= 0 ? 'var(--warm)' : 'var(--cold)';
-    h += `<article class="coin" style="--pc:${pc}">
-      <div class="hd"><span class="st">${esc(c.status_text)}</span><h3>${symLink(c)}<small class="rk">${c.rank}位 ・ ${esc(venTxt(c))}</small></h3>
-        ${c.entry?'<span class="entry">◎ 条件そろい</span>':''}
-        <span class="rel num" style="color:${(c.rel_24h??0)<0?'var(--cold)':'var(--pc)'}">${sp(c.rel_24h)}</span></div>
-      <p class="act">${esc(c.why)}</p>
-      <div class="cst"><span>価格<b>${usd(c.price)}</b></span><span>24h<b>${sp(c.chg_24h)}</b></span><span>7日 BTC比<b>${sp(c.rel_7d)}</b></span>
-        <span>出来高<b>${vol(c.vol)}</b></span><span>FR<b class="${c.funding!=null&&c.funding>=0.0005?'hotfr':''}">${fr(c.funding)}</b></span><span>OI 24h<b>${sp(c.oi_24h)}</b></span>
-        <div class="spark">${spark(c.px_series||[], pxc, 84, 22)}</div></div>
-      <div class="sig">${c.trend?`<span class="chip" style="background:${TREND[c.trend][1]}">${TREND[c.trend][0]}</span>`:''}
-        ${c.vs_ma7!=null?`<span class="px">7日線比<b>${sp(c.vs_ma7)}</b></span>`:''}${c.vs_ma30!=null?`<span class="px">30日線比<b>${sp(c.vs_ma30)}</b></span>`:''}
-        ${c.div?`<span style="color:${DIV[c.div]}">${esc(c.div_text)}</span>`:''}</div>
-      ${ch?`<div class="cch"><span class="cs num" style="color:${heat(ch.score)}">${ch.score??'—'}</span><span>${esc(ch.name)}チェーンの温度 <span style="color:${TAG[ch.label]}">${esc(ch.label_text)}</span></span>
-        <span>ステーブル<b>${sp(ch.stable_7d)}</b></span><span>DEX<b>${sp(ch.dex_7d)}</b></span><span>TVL<b>${sp(ch.tvl_7d)}</b></span></div>`:''}
-      ${(c.sectors||[]).length?`<div class="schips">${c.sectors.map(s=>`<span class="schip" style="--pc:${SPC[s.phase]}">${esc(s.name)}<b>${esc(s.phase_text)}</b></span>`).join('')}</div>`:''}
-      ${ch&&(ch.tokens||[]).length?`<details class="toks"><summary>${esc(ch.name)}で取引できるトークン（${ch.tokens.length}）</summary>
-        <table><thead><tr><th>トークン</th><th>24h</th><th class="hide-sm">7日</th><th>FR 8h</th><th>出来高</th></tr></thead><tbody>
-        ${ch.tokens.map(t=>`<tr><td><b>${esc(t.symbol)}</b> ${ven(t.venues)}<span class="sub">${esc([t.name,t.cat].filter(Boolean).join(' ・ '))}</span></td>
-          <td class="num">${sp(t.chg_24h)}</td><td class="num hide-sm">${sp(t.px_7d)}</td><td class="num">${fr(t.fr8h)}</td><td class="num">${vol(t.vol)}</td></tr>`).join('')}
-        </tbody></table><p>このチェーンのDeFiトークンとエコシステムの銘柄のうち、Hyperliquid（HL）かOstium（Ost）で取引できるものを出来高順に並べています。</p></details>`:''}
-    </article>`;
-  }
-  h += `</section>`;
-
+  h += flowHtml(d) + listHtml(d);
   $('#app').innerHTML = h;
+  document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { SORT = b.dataset.sort; render(DATA); });
+  document.querySelectorAll('details.row').forEach(el => el.addEventListener('toggle', () => el.open ? OPEN.add(el.dataset.id) : OPEN.delete(el.dataset.id)));
+  document.querySelectorAll('.tag[href^="#c-"]').forEach(a => a.onclick = () => { const el = document.querySelector(a.getAttribute('href')); if(el) el.open = true; });
 }
-
-const usd = v => v==null ? '—' : '$' + (v>=100 ? Math.round(v).toLocaleString('en-US') : v.toFixed(v>=1?2:4));
 
 async function load(){
   if(window.__DATA__) return render(window.__DATA__);
-  const q = new URLSearchParams(location.search).has('mock');
-  for(const f of q ? ['data.mock.json'] : ['data.json']){
-    try{ const r = await fetch(`${f}?t=${Date.now()}`); if(r.ok) return render(await r.json()); }catch(e){}
+  const f = new URLSearchParams(location.search).has('mock') ? 'data.mock.json' : 'data.json';
+  try{ const r = await fetch(`${f}?t=${Date.now()}`); if(r.ok) return render(await r.json()); }catch(e){}
+  if(!DATA){
+    $('#updated').textContent = '';
+    $('#app').innerHTML = `<div class="panel empty">data.json がまだありません。GitHubのActionsタブで「update-data」を一度実行すると表示されます。</div>`;
   }
-  $('#updated').textContent = '';
-  $('#app').innerHTML = `<div class="empty">data.json がまだありません。GitHubのActionsタブで「update-data」を一度実行すると表示されます。</div>`;
 }
 load();
 setInterval(load, 10*60*1000);
