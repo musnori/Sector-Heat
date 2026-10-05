@@ -67,7 +67,7 @@ h2{font-size:16px;font-weight:700;margin:0 0 4px}
 .seg{display:inline-flex;background:var(--page);border-radius:8px;padding:3px;gap:2px;box-shadow:0 0 0 1px var(--ring) inset}
 .seg button{font:inherit;font-size:13px;border:0;background:none;color:var(--ink-2);padding:5px 12px;border-radius:6px;cursor:pointer}
 .seg button[aria-pressed="true"]{background:var(--raised);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08),0 0 0 1px var(--ring)}
-.cols,.row>summary{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.5fr) 60px 76px 68px 64px 64px 84px 14px;gap:12px;align-items:center;padding:0 20px}
+.cols,.row>summary{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.3fr) 56px 76px 64px 76px 60px 60px 72px 14px;gap:12px;align-items:center;padding:0 20px}
 .cols{font-size:12px;color:var(--muted);padding-bottom:8px;border-bottom:1px solid var(--grid)}
 .cols span{white-space:nowrap}
 .r{text-align:right}
@@ -90,6 +90,10 @@ h2{font-size:16px;font-weight:700;margin:0 0 4px}
 .relc .v{text-align:right;font-weight:600;font-size:14px}
 .num{font-size:14px;text-align:right;white-space:nowrap}
 .hot{color:var(--critical);font-weight:700}
+.rsi{font-size:14px;text-align:right;white-space:nowrap}
+.rsi i{font-style:normal;color:var(--muted);margin:0 3px}
+.rsi .rl{display:none;color:var(--muted)}
+.rsi .ob{color:var(--critical);font-weight:700} .rsi .os{color:var(--down);font-weight:700}
 /* 状態ごとの色（点の色＋薄い背景。文字は黒のまま） */
 .st{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap;color:var(--ink);
   background:color-mix(in srgb,var(--c) 15%,transparent)}
@@ -129,7 +133,7 @@ footer{margin-top:20px;color:var(--muted);font-size:12px}
 
 /* タブレット: 48時間・7日・OIを詳細へ */
 @media (max-width:860px){
-  .cols,.row>summary{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.4fr) 60px 64px 84px 14px}
+  .cols,.row>summary{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) minmax(0,1.3fr) 56px 76px 64px 72px 14px}
   .c-spark,.c-ma,.c-oi{display:none}
 }
 /* スマホ: 1銘柄2段 */
@@ -140,8 +144,10 @@ footer{margin-top:20px;color:var(--muted);font-size:12px}
   .flow .head{font-size:16px}
   .lhead{padding:0 16px 10px}
   .cols{display:none}
-  .row>summary{grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"coin price" "st rel";gap:8px 12px;padding:12px 16px}
-  .c-coin{grid-area:coin} .c-price{grid-area:price} .c-st{grid-area:st;align-self:center} .c-rel{grid-area:rel;width:160px}
+  .row>summary{grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"coin coin price" "st rsi rel";gap:8px 10px;padding:12px 16px}
+  .c-rsi{grid-area:rsi;text-align:left;font-size:12px}
+  .rsi .rl{display:inline}
+  .c-coin{grid-area:coin} .c-price{grid-area:price} .c-st{grid-area:st;align-self:center} .c-rel{grid-area:rel;width:130px}
   .c-fr,.c-chev,.c-7d{display:none}
   .det{padding:4px 16px 16px}
   .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -173,6 +179,8 @@ footer{margin-top:20px;color:var(--muted);font-size:12px}
         4時間足が取れない銘柄は、7日の値動きが+5%以上かつ24時間もプラスなら「強い」、−5%以下かつ24時間もマイナスなら「弱い」とします。</dd>
       <dt>条件そろい</dt>
       <dd>状態が「強い・初動・押し目」で、OIに危ないズレがなく（OIだけ急増・買い戻し主導でない）、FRが0.05%未満の銘柄のうち、状態順で最大3つです。エントリーを検討する候補の目安で、売買の合図ではありません。</dd>
+      <dt>RSI（1時間足・4時間足）</dt>
+      <dd>14本の足で計算したRSI（ワイルダー方式、TradingViewと同じ計算）です。表では「1時間足 / 4時間足」の順に並べています。70以上は買われすぎ（赤）、30以下は売られすぎ（青）です。最後の足は確定前の値も含むので、更新のたびに少し動きます。値はHyperliquidの足（無い銘柄はBinance・OKX）から計算しています。</dd>
       <dt>OIと価格のズレ</dt>
       <dd>OIはドル建てなので、価格の上げ下げの影響を除いてから比べています。価格が上がってOIも増えていれば新しい買いが入っている、価格が動かないのにOIだけ急増していれば清算で急に動きやすい、という見方です。</dd>
       <dt>チェーンの温度（0〜100）</dt>
@@ -197,6 +205,7 @@ const usd = v => {
   return '$' + v.toPrecision(4);
 };
 const big = v => v==null ? '—' : v>=1e12 ? '$'+(v/1e12).toFixed(2)+'T' : v>=1e9 ? '$'+(v/1e9).toFixed(1)+'B' : v>=1e6 ? '$'+(v/1e6).toFixed(0)+'M' : '$'+(v/1e3).toFixed(0)+'k';
+const rsiv = v => v==null ? '—' : `<span class="${v>=70?'ob':v<=30?'os':''}">${Math.round(v)}</span>`;
 const fr = v => v==null ? '—' : (v*100).toFixed(3) + '%';
 const arrow = v => v==null || Math.abs(v)<0.05 ? '' : `<span class="arr ${v>0?'u':'d'}" aria-hidden="true">${v>0?'▲':'▼'}</span>`;
 const stc = st => 's-' + (st||'flat');
@@ -242,6 +251,8 @@ function detailHtml(c){
   const ch = c.chain;
   const tile = (k, v, small) => `<div class="tile"><div class="k">${k}</div><div class="v tn">${esc(v)}${small?`<small>${esc(small)}</small>`:''}</div></div>`;
   let h = `<div class="det">${c.why?`<p class="why">${esc(c.why)}</p>`:''}<div class="tiles">
+    ${tile('RSI 1時間足', c.rsi_1h==null ? '—' : Math.round(c.rsi_1h), c.rsi_1h>=70 ? '買われすぎ' : c.rsi_1h<=30 ? '売られすぎ' : '')}
+    ${tile('RSI 4時間足', c.rsi_4h==null ? '—' : Math.round(c.rsi_4h), c.rsi_4h>=70 ? '買われすぎ' : c.rsi_4h<=30 ? '売られすぎ' : '')}
     ${tile('トレンド', c.trend ? TREND[c.trend] : '—')}
     ${tile('7日線との差', pc(c.vs_ma7))}${tile('30日線との差', pc(c.vs_ma30))}
     ${tile('OIと価格', c.div_text || '24時間分の記録待ち')}
@@ -268,6 +279,7 @@ function rowHtml(c, max){
       <div class="num tn c-7d">${pc(c.chg_7d)}</div>
       <div class="spark c-spark">${spark(c.px_series)}</div>
       <div class="num tn c-ma">${pc(c.vs_ma7)}</div>
+      <div class="rsi tn c-rsi" title="RSI 1時間足・4時間足"><span class="rl">RSI </span>${rsiv(c.rsi_1h)}<i>/</i>${rsiv(c.rsi_4h)}</div>
       <div class="num tn c-fr${c.funding!=null&&c.funding>=0.0005?' hot':''}">${fr(c.funding)}</div>
       <div class="num tn c-oi">${pc(c.oi_24h)}</div>
       <div class="c-st"><span class="st ${stc(c.status)}">${esc(c.status_text)}</span></div>
@@ -282,7 +294,7 @@ function listHtml(d){
   let h = `<section class="panel list" aria-labelledby="h-list">
     <div class="lhead"><div><h2 id="h-list">上位${coins.length}銘柄</h2><p class="sub">HyperliquidかOstiumで取引できる銘柄を時価総額順に（ステーブル・ラップ系を除く）。行をタップすると詳しく見られます</p></div>
       <div class="seg" role="group" aria-label="並び順">${[['status','状態順'],['chg','24h順'],['rank','時価総額順']].map(([k,l])=>`<button data-sort="${k}" aria-pressed="${SORT===k}">${l}</button>`).join('')}</div></div>
-    <div class="cols" aria-hidden="true"><span>銘柄</span><span class="r">価格</span><span>24時間</span><span class="r c-7d">7日</span><span class="c-spark">48時間</span><span class="r c-ma">7日線比</span><span class="r c-fr">FR</span><span class="r c-oi">OI 24h</span><span>状態</span><span></span></div>`;
+    <div class="cols" aria-hidden="true"><span>銘柄</span><span class="r">価格</span><span>24時間</span><span class="r c-7d">7日</span><span class="c-spark">48時間</span><span class="r c-ma">7日線比</span><span class="r c-rsi">RSI 1h/4h</span><span class="r c-fr">FR</span><span class="r c-oi">OI 24h</span><span>状態</span><span></span></div>`;
   if(!coins.length) h += `<div class="empty">銘柄のデータがありません。</div>`;
   for(const c of coins) h += rowHtml(c, max);
   return h + `</section>`;

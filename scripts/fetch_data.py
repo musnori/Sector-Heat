@@ -315,17 +315,43 @@ def fetch_derivs(symbols):
     return None, {}
 
 
-# ---------- 価格トレンド（4時間足・30日分） ----------
-def closes_binance(sym):
+# ---------- 価格トレンドとRSI（4時間足・1時間足） ----------
+RSI_LEN = 14   # RSIの期間
+BARS = {"4h": ("4h", "4H", 31 * 86400), "1h": ("1h", "1H", 7 * 86400)}  # Binance, OKX, Hyperliquidで取る期間
+
+
+def closes_binance(sym, iv):
     k = get("https://data-api.binance.vision/api/v3/klines",
-            params={"symbol": f"{sym}USDT", "interval": "4h", "limit": 181})
+            params={"symbol": f"{sym}USDT", "interval": BARS[iv][0], "limit": 181})
     return [float(x[4]) for x in k]  # 古い順
 
 
-def closes_okx(sym):
+def closes_okx(sym, iv):
     d = get("https://www.okx.com/api/v5/market/candles",
-            params={"instId": f"{sym}-USDT", "bar": "4H", "limit": 181})["data"]
+            params={"instId": f"{sym}-USDT", "bar": BARS[iv][1], "limit": 181})["data"]
     return [float(x[4]) for x in reversed(d)]  # 新しい順で返るので反転
+
+
+def closes_hl(name, iv):
+    end = int(time.time() * 1000)
+    k = post("https://api.hyperliquid.xyz/info", {"type": "candleSnapshot", "req": {
+        "coin": name, "interval": iv, "startTime": end - BARS[iv][2] * 1000, "endTime": end}})
+    return [float(x["c"]) for x in k][-181:]  # 古い順
+
+
+def rsi(closes, n=RSI_LEN):
+    """ワイルダー方式のRSI（TradingViewなどと同じ計算）。最後の足は確定前の値も含む"""
+    if not closes or len(closes) < n + 1:
+        return None
+    ch = [b - a for a, b in zip(closes, closes[1:])]
+    up = sum(max(x, 0) for x in ch[:n]) / n
+    dn = sum(max(-x, 0) for x in ch[:n]) / n
+    for x in ch[n:]:
+        up = (up * (n - 1) + max(x, 0)) / n
+        dn = (dn * (n - 1) + max(-x, 0)) / n
+    if dn == 0:
+        return 100.0
+    return 100 - 100 / (1 + up / dn)
 
 
 def trend_stats(closes):
@@ -345,35 +371,33 @@ def trend_stats(closes):
             "vs_ma7": pct(now, ma7), "vs_ma30": pct(now, ma30), "trend": trend}
 
 
-def closes_hl(name):
-    end = int(time.time() * 1000)
-    k = post("https://api.hyperliquid.xyz/info", {"type": "candleSnapshot", "req": {
-        "coin": name, "interval": "4h", "startTime": end - 31 * 86400 * 1000, "endTime": end}})
-    return [float(x["c"]) for x in k][-181:]  # 古い順
-
-
 def fetch_prices(symbols, tradable):
-    """4時間足の終値。Hyperliquidにある銘柄はそこから、無ければ Binance → OKX"""
-    sources = [["Binance", closes_binance, 0], ["OKX", closes_okx, 0]]
+    """4時間足と1時間足の終値。Hyperliquidにある銘柄はそこから、無ければ Binance → OKX"""
+    fails = {"Binance": 0, "OKX": 0}
+
+    def closes(s, iv):
+        hl = (tradable.get(s) or {}).get("hl")
+        c = safe(lambda: closes_hl(hl, iv)) if hl else None
+        if c and len(c) >= 42:
+            time.sleep(1.0)  # Hyperliquidの呼び出し上限（1分あたり）に余裕を持たせる
+            return c
+        for name, fn in (("Binance", closes_binance), ("OKX", closes_okx)):
+            if fails[name] >= 3:
+                continue  # 3回続けて失敗した取引所は以降使わない
+            c = safe(lambda: fn(s, iv))
+            time.sleep(0.2)
+            if c and len(c) >= 42:
+                fails[name] = 0
+                return c
+            fails[name] += 1
+        return None
+
     out = {}
     for s in symbols:
-        hl = (tradable.get(s) or {}).get("hl")
-        c = safe(lambda: closes_hl(hl)) if hl else None
-        if c and len(c) >= 42:
-            out[s] = trend_stats(c)
-            time.sleep(0.1)
+        c4, c1 = closes(s, "4h"), closes(s, "1h")
+        if not c4 and not c1:
             continue
-        for src in sources:
-            name, fn, fails = src
-            if fails >= 3:
-                continue  # 3回続けて失敗した取引所は以降使わない
-            c = safe(lambda: fn(s))
-            if c and len(c) >= 42:
-                out[s] = trend_stats(c)
-                src[2] = 0
-                break
-            src[2] += 1
-        time.sleep(0.2)
+        out[s] = {**(trend_stats(c4) if c4 else {}), "rsi_4h": rsi(c4), "rsi_1h": rsi(c1)}
     return out
 
 
@@ -634,7 +658,7 @@ def enrich_coins(coins, prices, chains, hist):
     chain_by_sym = {r["symbol"]: r for r in chains if r.get("symbol")}
     for co in coins:
         p = prices.get(co["sym"], {})
-        co.update({k: p.get(k) for k in ("vs_ma7", "vs_ma30", "trend")})
+        co.update({k: p.get(k) for k in ("vs_ma7", "vs_ma30", "trend", "rsi_1h", "rsi_4h")})
         co["oi_real"] = oi_real(co["oi_24h"], co["chg_24h"])
         co["div"], co["div_text"] = oi_div(co["chg_24h"], co["oi_real"])
         ch = chain_by_sym.get(co["sym"])
@@ -808,7 +832,7 @@ def mock_all(now_ts):
         for _ in range(181):
             v *= 1 + drift + random.uniform(-0.02, 0.02)
             c.append(v)
-        prices[s] = trend_stats(c)
+        prices[s] = {**trend_stats(c), "rsi_4h": rsi(c), "rsi_1h": rsi(c[-40:])}
     syms = ["BTC", "ETH", "SOL", "XRP", "DOGE", "WIF", "BONK", "PEPE", "POPCAT", "FARTCOIN", "JUP", "RAY", "PYTH",
             "JTO", "RENDER", "TAO", "FET", "VIRTUAL", "AI16Z", "ONDO", "PENDLE", "AAVE", "UNI", "MORPHO", "AERO",
             "ZRO", "STRK", "ZK", "OP", "ARB", "CETUS", "DEEP", "NAVX", "HYPE", "PURR", "LINK", "ENA", "ETHFI"]
@@ -887,8 +911,7 @@ def main():
         if not derivs:
             warnings.append("先物データを取れませんでした。FRとOIなしで計算しています。")
         print("価格...")
-        prices = fetch_prices(list(dict.fromkeys(["BTC"] + top_symbols(market, meta, tradable)
-                                                 + [r["symbol"] for r in chains if r["symbol"]])), tradable)
+        prices = fetch_prices(top_symbols(market, meta, tradable), tradable)
         if not prices:
             warnings.append("価格データを取れませんでした。トレンドとOIのズレは表示されません。")
         cache = CatCache(CAT_PATH, now_ts, CAT_BUDGET)
